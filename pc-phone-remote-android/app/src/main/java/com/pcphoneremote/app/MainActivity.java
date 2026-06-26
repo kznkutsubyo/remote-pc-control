@@ -9,6 +9,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -52,7 +53,7 @@ public class MainActivity extends Activity {
     private static final String PREF_SELECTED_PROFILE = "selected_profile";
     private static final String PREF_TAB = "selected_tab";
     private static final String PREF_LIGHT_THEME = "light_theme";
-    private static final String DEFAULT_HOST = "192.168.1.25";
+    private static final String DEFAULT_HOST = "";
     private static final String DEFAULT_PORT = "8765";
     private static final String DEFAULT_PIN = "";
 
@@ -123,7 +124,7 @@ public class MainActivity extends Activity {
         if (selectedProfileIndex < 0 || selectedProfileIndex >= profiles.size()) {
             selectedProfileIndex = 0;
         }
-        currentTab = prefs.getInt(PREF_TAB, 0);
+        currentTab = prefs.getInt(PREF_TAB, prefs.contains(PREF_PROFILES) ? 0 : 1);
         if (currentTab < 0 || currentTab > 2) {
             currentTab = 0;
         }
@@ -302,6 +303,13 @@ public class MainActivity extends Activity {
 
     private void buildDevicesTab(LinearLayout root) {
         DeviceProfile selectedProfile = profiles.get(selectedProfileIndex);
+        if (!prefs.contains(PREF_PROFILES)) {
+            LinearLayout introCard = card(root, tr("onboardingTitle"), tr("onboardingSubtitle"));
+            TextView steps = text(tr("onboardingSteps"), 14, MUTED, Typeface.NORMAL);
+            steps.setLineSpacing(dp(3), 1.0f);
+            introCard.addView(steps);
+        }
+
         LinearLayout settingsCard = card(root, tr("profilesTitle"), tr("profilesSubtitle"));
         TextView profileLabel = text(tr("profileSelectLabel"), 13, labelColor(), Typeface.BOLD);
         profileLabel.setPadding(dp(2), 0, dp(2), dp(6));
@@ -373,6 +381,14 @@ public class MainActivity extends Activity {
             hideKeyboard();
         });
         profileButtons.addView(deleteProfile);
+
+        TextView importProfile = actionButton(tr("importProfileTitle"), tr("importProfileSub"), ACCENT_DARK, TEXT);
+        importProfile.setOnClickListener(v -> {
+            animateTap(v);
+            showImportDialog();
+            hideKeyboard();
+        });
+        settingsCard.addView(importProfile);
 
         TextView test = actionButton(tr("testTitle"), tr("testSub"), Color.rgb(34, 30, 54), TEXT);
         test.setOnClickListener(v -> {
@@ -482,6 +498,9 @@ public class MainActivity extends Activity {
     }
 
     private String endpointFor(DeviceProfile profile) {
+        if (profile.host == null || profile.host.trim().isEmpty()) {
+            return tr("notConfigured");
+        }
         if (profile.host.startsWith("http://") || profile.host.startsWith("https://")) {
             return profile.host;
         }
@@ -684,7 +703,9 @@ public class MainActivity extends Activity {
     }
 
     private void createProfile() {
-        saveCurrentProfile();
+        if (profileNameInput != null && hostInput != null && !hostInput.getText().toString().trim().isEmpty()) {
+            saveCurrentProfile();
+        }
         DeviceProfile profile = new DeviceProfile(
                 tr("newProfileName") + " " + (profiles.size() + 1),
                 DEFAULT_HOST,
@@ -696,6 +717,82 @@ public class MainActivity extends Activity {
         persistProfiles();
         refreshAfterProfileChange(false);
         setStatus(tr("profileAdded"), ACCENT);
+    }
+
+    private void showImportDialog() {
+        EditText input = new EditText(this);
+        input.setHint("pcphone://add?name=Home%20PC&host=...");
+        input.setSingleLine(false);
+        input.setMinLines(3);
+        input.setTextColor(TEXT);
+        input.setHintTextColor(lightTheme ? Color.rgb(136, 146, 164) : Color.rgb(111, 121, 130));
+        input.setBackground(panelBg(fieldBg(), subtleStroke(), 8));
+        input.setPadding(dp(14), dp(10), dp(14), dp(10));
+
+        new AlertDialog.Builder(this)
+                .setTitle(tr("importProfileTitle"))
+                .setMessage(tr("importProfileMessage"))
+                .setView(input)
+                .setNegativeButton(tr("cancel"), null)
+                .setPositiveButton(tr("importProfileAction"), (dialog, which) -> importProfileCode(input.getText().toString()))
+                .show();
+    }
+
+    private void importProfileCode(String code) {
+        DeviceProfile profile = parseProfileCode(code);
+        if (profile == null) {
+            setStatus(tr("importProfileError"), DANGER);
+            return;
+        }
+
+        if (profileNameInput != null && hostInput != null && !hostInput.getText().toString().trim().isEmpty()) {
+            saveCurrentProfile();
+        }
+        profiles.add(profile);
+        selectedProfileIndex = profiles.size() - 1;
+        persistProfiles();
+        prefs.edit().putInt(PREF_TAB, 0).apply();
+        rebuildContent(false);
+        setStatus(tr("importProfileSaved"), ACCENT);
+    }
+
+    private DeviceProfile parseProfileCode(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String code = raw.trim();
+        if (code.isEmpty()) {
+            return null;
+        }
+
+        try {
+            if (code.startsWith("{")) {
+                JSONObject item = new JSONObject(code);
+                return new DeviceProfile(
+                        item.optString("name", tr("defaultProfileName")),
+                        item.optString("host", DEFAULT_HOST),
+                        item.optString("port", DEFAULT_PORT),
+                        item.optString("pin", DEFAULT_PIN)
+                );
+            }
+
+            Uri uri = Uri.parse(code);
+            if (!"pcphone".equals(uri.getScheme()) || !"add".equals(uri.getHost())) {
+                return null;
+            }
+            return new DeviceProfile(
+                    valueOrDefault(uri.getQueryParameter("name"), tr("defaultProfileName")),
+                    valueOrDefault(uri.getQueryParameter("host"), DEFAULT_HOST),
+                    valueOrDefault(uri.getQueryParameter("port"), DEFAULT_PORT),
+                    valueOrDefault(uri.getQueryParameter("pin"), DEFAULT_PIN)
+            );
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String valueOrDefault(String value, String fallback) {
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
     }
 
     private void deleteCurrentProfile() {
@@ -848,7 +945,9 @@ public class MainActivity extends Activity {
         DeviceProfile profile = activeProfile();
         String host = profile.host;
         String port = profile.port;
-        if (host == null || host.isEmpty()) host = DEFAULT_HOST;
+        if (host == null || host.trim().isEmpty()) {
+            throw new IllegalStateException(tr("missingHost"));
+        }
         if (port == null || port.isEmpty()) port = DEFAULT_PORT;
         if (host.startsWith("http://") || host.startsWith("https://")) {
             while (host.endsWith("/")) {
@@ -1093,6 +1192,9 @@ public class MainActivity extends Activity {
                 "themeSubtitle", "Switch between the premium dark look and a bright clean interface.",
                 "themeDark", "Dark",
                 "themeLight", "Light",
+                "onboardingTitle", "Add your first PC",
+                "onboardingSubtitle", "Create a device profile before using the remote.",
+                "onboardingSteps", "1. Start the server on the computer.\n2. Open the pairing page or copy the PC address.\n3. Add the profile here and test the connection.",
                 "profilesTitle", "Devices",
                 "profilesSubtitle", "Add several PCs or relay servers, then pick the device before using the remote.",
                 "profileSelectLabel", "Selected device",
@@ -1106,6 +1208,12 @@ public class MainActivity extends Activity {
                 "addProfileSub", "New device",
                 "deleteProfileTitle", "Delete",
                 "deleteProfileSub", "Remove device",
+                "importProfileTitle", "Import setup",
+                "importProfileSub", "Paste setup code",
+                "importProfileMessage", "Paste a setup code from the PC pairing page or from a QR scanner.",
+                "importProfileAction", "Import",
+                "importProfileSaved", "Device imported.",
+                "importProfileError", "Could not read that setup code.",
                 "profileSaved", "Device profile saved.",
                 "profileAdded", "Device profile added.",
                 "profileDeleted", "Device profile deleted.",
@@ -1118,10 +1226,12 @@ public class MainActivity extends Activity {
                 "tabRemote", "Remote",
                 "tabDevices", "Devices",
                 "tabSettings", "Settings",
+                "notConfigured", "Not configured",
+                "missingHost", "Add this PC address in Devices first.",
                 "settingsTitle", "Connection settings",
                 "settingsSubtitle", "These values must match the server running on your PC.",
                 "hostLabel", "PC IP address",
-                "hostHint", "Example: 192.168.1.25",
+                "hostHint", "Example: 192.168.x.x or https://remote.example.com",
                 "portLabel", "Port",
                 "portHint", "Usually 8765",
                 "pinHint", "Server access code",
@@ -1165,6 +1275,9 @@ public class MainActivity extends Activity {
                 "themeSubtitle", "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0430\u0439 \u0442\u0435\u043c\u043d\u044b\u0439 \u043f\u0440\u0435\u043c\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0441\u0442\u0438\u043b\u044c \u0438 \u0441\u0432\u0435\u0442\u043b\u044b\u0439 \u0447\u0438\u0441\u0442\u044b\u0439 \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441.",
                 "themeDark", "\u0422\u0435\u043c\u043d\u0430\u044f",
                 "themeLight", "\u0421\u0432\u0435\u0442\u043b\u0430\u044f",
+                "onboardingTitle", "\u0414\u043e\u0431\u0430\u0432\u044c \u043f\u0435\u0440\u0432\u044b\u0439 \u041f\u041a",
+                "onboardingSubtitle", "\u0421\u043e\u0437\u0434\u0430\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430 \u043f\u0435\u0440\u0435\u0434 \u043f\u0443\u043b\u044c\u0442\u043e\u043c.",
+                "onboardingSteps", "1. \u0417\u0430\u043f\u0443\u0441\u0442\u0438 \u0441\u0435\u0440\u0432\u0435\u0440 \u043d\u0430 \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0435.\n2. \u041e\u0442\u043a\u0440\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 \u043f\u0440\u0438\u0432\u044f\u0437\u043a\u0438 \u0438\u043b\u0438 \u0441\u043a\u043e\u043f\u0438\u0440\u0443\u0439 \u0430\u0434\u0440\u0435\u0441 \u041f\u041a.\n3. \u0414\u043e\u0431\u0430\u0432\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0437\u0434\u0435\u0441\u044c \u0438 \u043f\u0440\u043e\u0432\u0435\u0440\u044c \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435.",
                 "profilesTitle", "\u0423\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430",
                 "profilesSubtitle", "\u0414\u043e\u0431\u0430\u0432\u043b\u044f\u0439 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u041f\u041a \u0438\u043b\u0438 relay-\u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432, \u0430 \u043f\u0435\u0440\u0435\u0434 \u043f\u0443\u043b\u044c\u0442\u043e\u043c \u0432\u044b\u0431\u0438\u0440\u0430\u0439 \u043d\u0443\u0436\u043d\u043e\u0435 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e.",
                 "profileSelectLabel", "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u0435 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e",
@@ -1178,6 +1291,12 @@ public class MainActivity extends Activity {
                 "addProfileSub", "\u041d\u043e\u0432\u044b\u0439 \u041f\u041a",
                 "deleteProfileTitle", "\u0423\u0434\u0430\u043b\u0438\u0442\u044c",
                 "deleteProfileSub", "\u0423\u0431\u0440\u0430\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c",
+                "importProfileTitle", "\u0418\u043c\u043f\u043e\u0440\u0442",
+                "importProfileSub", "\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c setup-\u043a\u043e\u0434",
+                "importProfileMessage", "\u0412\u0441\u0442\u0430\u0432\u044c setup-\u043a\u043e\u0434 \u0441\u043e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b \u043f\u0440\u0438\u0432\u044f\u0437\u043a\u0438 \u041f\u041a \u0438\u043b\u0438 \u0438\u0437 QR-\u0441\u043a\u0430\u043d\u0435\u0440\u0430.",
+                "importProfileAction", "\u0418\u043c\u043f\u043e\u0440\u0442",
+                "importProfileSaved", "\u0423\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u043e.",
+                "importProfileError", "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u044c setup-\u043a\u043e\u0434.",
                 "profileSaved", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d.",
                 "profileAdded", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d.",
                 "profileDeleted", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0443\u0434\u0430\u043b\u0435\u043d.",
@@ -1190,10 +1309,12 @@ public class MainActivity extends Activity {
                 "tabRemote", "\u041f\u0443\u043b\u044c\u0442",
                 "tabDevices", "\u041f\u041a",
                 "tabSettings", "\u0415\u0449\u0435",
+                "notConfigured", "\u041d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u043e",
+                "missingHost", "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0434\u043e\u0431\u0430\u0432\u044c \u0430\u0434\u0440\u0435\u0441 \u041f\u041a \u0432\u043e \u0432\u043a\u043b\u0430\u0434\u043a\u0435 \u041f\u041a.",
                 "settingsTitle", "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u044f",
                 "settingsSubtitle", "\u042d\u0442\u0438 \u0434\u0430\u043d\u043d\u044b\u0435 \u0434\u043e\u043b\u0436\u043d\u044b \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u0442\u044c \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c \u043d\u0430 \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0435.",
                 "hostLabel", "IP \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0430",
-                "hostHint", "\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: 192.168.1.25",
+                "hostHint", "\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: 192.168.x.x \u0438\u043b\u0438 https://remote.example.com",
                 "portLabel", "\u041f\u043e\u0440\u0442",
                 "portHint", "\u041e\u0431\u044b\u0447\u043d\u043e 8765",
                 "pinHint", "\u041a\u043e\u0434 \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a \u0441\u0435\u0440\u0432\u0435\u0440\u0443",

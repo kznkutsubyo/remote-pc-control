@@ -13,4 +13,18 @@ android {
         versionCode 1
         versionName "1.0"
     }
+
+    signingConfigs {
+        localRelease {
+            initWith signingConfigs.debug
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.localRelease
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
 }

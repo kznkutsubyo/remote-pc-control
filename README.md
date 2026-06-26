@@ -13,12 +13,15 @@ PC Phone Remote is a small Windows + Android project for quick computer actions 
 - Animated theme switcher.
 - Bottom navigation with Remote, Devices, and Settings tabs.
 - Multiple device profiles saved on the phone.
+- First-run onboarding for adding the first PC.
+- Pairing page with setup code and optional QR code.
 - Vector icon buttons for PC commands.
 - Multilingual interface:
   English, Russian, Ukrainian, Slovak, Czech, Japanese, German, Spanish, French, and Polish.
 - PIN-protected command access.
 - Windows autostart through Task Scheduler.
 - Hidden server launch with `pythonw.exe`.
+- Optional Windows tray launcher.
 - Optional Task Scheduler command tasks for locked-session power actions.
 - Optional relay mode for remote access outside the local network.
 
@@ -61,6 +64,9 @@ No real IP address or PIN is bundled in the project. Configure your own values a
 |   |-- app.py                     # Local Windows HTTP server
 |   |-- relay_server.py            # Optional public relay server
 |   |-- relay_agent.py             # PC-side relay polling agent
+|   |-- server_tray.py             # Optional tray launcher
+|   |-- requirements.txt           # Optional QR/tray dependencies
+|   |-- install-deps.bat           # Dependency installer
 |   |-- install-command-tasks.ps1   # Optional locked-session command tasks
 |   |-- run.bat                    # Manual local server launcher
 |   |-- start-hidden.vbs           # Hidden autostart launcher
@@ -102,6 +108,7 @@ Use this mode when the phone and PC are on the same Wi-Fi or LAN.
 
 ```powershell
 cd "pc-phone-remote"
+.\install-deps.bat
 $env:REMOTE_PIN = "<your-pin>"
 python app.py
 ```
@@ -114,7 +121,19 @@ http://<your-pc-ip>:8765
 
 ### 2. Add The PC In The Android App
 
-Open the Android app, go to the **Devices** tab, and create a profile:
+Open this page on the PC:
+
+```text
+http://127.0.0.1:8765/pair
+```
+
+Scan the QR code with the phone camera, copy the setup code, then open the Android app:
+
+```text
+Devices -> Import setup
+```
+
+You can also create a profile manually:
 
 ```text
 Name:  Home PC
@@ -144,7 +163,19 @@ The debug APK will be created here:
 pc-phone-remote-android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Install that APK on your phone and add your PC from the **Devices** tab.
+For a locally installable release-style APK:
+
+```powershell
+.\gradlew.bat assembleRelease
+```
+
+Output:
+
+```text
+pc-phone-remote-android/app/build/outputs/apk/release/app-release.apk
+```
+
+This local release uses the debug signing key for convenience. Use a real private signing key before publishing anywhere.
 
 ## Windows Autostart
 
@@ -165,6 +196,23 @@ Program:   wscript.exe
 Argument:  "C:\path\to\pc-phone-remote\start-hidden.vbs"
 Start in:  C:\path\to\pc-phone-remote
 ```
+
+## Windows Tray Launcher
+
+Install optional dependencies:
+
+```powershell
+cd "pc-phone-remote"
+.\install-deps.bat
+```
+
+Then run:
+
+```powershell
+pythonw .\server_tray.py
+```
+
+The tray menu can open the remote page, open the pairing page, restart the server, stop the server, or quit the tray app.
 
 ## Locked-Session Power Commands
 

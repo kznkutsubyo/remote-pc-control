@@ -6,15 +6,14 @@ Native Android remote for the local Windows server in `pc-phone-remote`.
 
 - Saves PC IP, port, and PIN.
 - Supports multiple saved device profiles.
+- Has first-run onboarding for adding the first PC.
+- Imports PC setup codes from the Windows pairing page.
+- Supports dark and light themes.
 - Uses separate Remote, Devices, and Settings tabs.
 - Sends `mute`, `lock`, `sleep`, `restart`, and `shutdown` commands.
 - Uses plain local HTTP, so the Windows server must be running on the PC.
 
-Default settings:
-
-- IP example: `192.168.1.25`
-- Port: `8765`
-- PIN: not bundled; set your own on the PC/server and enter the same value in the app
+No real IP or PIN is bundled. Add your own PC in the **Devices** tab.
 
 ## Build APK
 
@@ -30,6 +29,20 @@ The APK will be here:
 ```text
 pc-phone-remote-android\app\build\outputs\apk\debug\app-debug.apk
 ```
+
+For a local release-style APK:
+
+```powershell
+.\gradlew.bat assembleRelease
+```
+
+Output:
+
+```text
+pc-phone-remote-android\app\build\outputs\apk\release\app-release.apk
+```
+
+The local release build uses the debug signing key for easy manual installation.
 
 You can also build it from Android Studio:
 
@@ -55,3 +68,15 @@ python app.py
 ```
 
 The phone and PC must be on the same Wi-Fi/network.
+
+To import a PC profile faster, open this page on the PC after the server starts:
+
+```text
+http://127.0.0.1:8765/pair
+```
+
+Scan the QR code with the phone camera, copy the setup code, then paste it into:
+
+```text
+Devices -> Import setup
+```

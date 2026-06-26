@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import html
 import http.cookies
+import ipaddress
 import json
 import os
 import secrets
@@ -12,7 +13,13 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
+
+try:
+    import qrcode
+    import qrcode.image.svg
+except ImportError:
+    qrcode = None
 
 
 APP_NAME = "PC Phone Remote"
@@ -82,6 +89,54 @@ def local_addresses(port: int) -> list[str]:
         pass
 
     return [f"http://{address}:{port}" for address in sorted(addresses)]
+
+
+def preferred_host(port: int) -> str:
+    fallback = f"http://127.0.0.1:{port}"
+    for address in local_addresses(port):
+        parsed = urlparse(address)
+        host = parsed.hostname or ""
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            continue
+        if ip.is_private and not ip.is_loopback:
+            return address
+
+    for address in local_addresses(port):
+        parsed = urlparse(address)
+        host = parsed.hostname or ""
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            continue
+        if not ip.is_loopback:
+            return address
+
+    return fallback
+
+
+def setup_uri(pin: str, port: int, name: str = "My PC") -> str:
+    base = preferred_host(port)
+    parsed = urlparse(base)
+    query = {
+        "name": name,
+        "host": parsed.hostname or "",
+        "port": str(parsed.port or port),
+    }
+    if pin:
+        query["pin"] = pin
+    return "pcphone://add?" + urlencode(query)
+
+
+def qr_svg_data_uri(value: str) -> str:
+    if qrcode is None:
+        return ""
+
+    factory = qrcode.image.svg.SvgPathImage
+    image = qrcode.make(value, image_factory=factory)
+    raw = image.to_string(encoding="unicode")
+    return "data:image/svg+xml;charset=utf-8," + quote(raw)
 
 
 def run_task(command: str) -> bool:
@@ -372,6 +427,27 @@ def remote_page() -> bytes:
     )
 
 
+def pair_page(pin: str, port: int) -> bytes:
+    uri = setup_uri(pin, port)
+    qr_src = qr_svg_data_uri(uri)
+    qr_block = (
+        f'<img alt="Pairing QR code" src="{qr_src}" style="width: min(100%, 280px); display: block; margin: 22px auto; background: white; padding: 14px; border-radius: 8px;">'
+        if qr_src
+        else '<p class="status">Install optional dependencies to show a QR code: <code>pip install -r requirements.txt</code></p>'
+    )
+    return page_shell(
+        f"{APP_NAME} Pairing",
+        f"""
+        <h1>Pair this PC</h1>
+        <p>Scan the QR code with your phone camera, copy the setup code, then paste it in the Android app: Devices -> Import setup.</p>
+        {qr_block}
+        <p class="status">Setup code:</p>
+        <input value="{html.escape(uri)}" readonly onclick="this.select()">
+        <p class="status">Local address: {html.escape(preferred_host(port))}</p>
+        """,
+    )
+
+
 class RemoteHandler(BaseHTTPRequestHandler):
     server_version = "PCPhoneRemote/1.0"
 
@@ -382,6 +458,10 @@ class RemoteHandler(BaseHTTPRequestHandler):
     @property
     def pin(self) -> str:
         return self.server.pin  # type: ignore[attr-defined]
+
+    @property
+    def port(self) -> int:
+        return int(self.server.server_address[1])
 
     def is_authenticated(self) -> bool:
         cookie_header = self.headers.get("Cookie", "")
@@ -418,6 +498,10 @@ class RemoteHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/health":
             self.send_bytes(200, b"ok", "text/plain; charset=utf-8")
+            return
+
+        if parsed.path == "/pair":
+            self.send_bytes(200, pair_page(self.pin, self.port))
             return
 
         if parsed.path != "/":

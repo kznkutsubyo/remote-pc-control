@@ -4,6 +4,13 @@ Small local web remote for a Windows PC. Open it from your phone on the same Wi-
 
 ## Start
 
+Install optional QR/tray dependencies once:
+
+```powershell
+cd "pc-phone-remote"
+.\install-deps.bat
+```
+
 Double-click `run.bat`, or run:
 
 ```powershell
@@ -15,10 +22,39 @@ python app.py
 The terminal prints local URLs like:
 
 ```text
-http://192.168.1.25:8765
+http://<your-pc-ip>:8765
 ```
 
 Open that URL on your phone and enter the PIN.
+
+## Pair Phone
+
+After starting the server, open this on the PC:
+
+```text
+http://127.0.0.1:8765/pair
+```
+
+The page shows a setup code and, when optional dependencies are installed, a QR code.
+
+On Android:
+
+```text
+Devices -> Import setup
+```
+
+Paste the setup code and the app will create a device profile automatically.
+
+## Tray Launcher
+
+Run the server from a small Windows tray icon:
+
+```powershell
+cd "pc-phone-remote"
+pythonw .\server_tray.py
+```
+
+The tray menu can open the remote, open the pairing page, restart the server, stop it, or quit.
 
 ## Autostart
 
@@ -62,7 +98,7 @@ The local server will use these tasks for `lock`, `sleep`, `restart`, and `shutd
 Example:
 
 ```powershell
-$env:REMOTE_PIN = "7391"
+$env:REMOTE_PIN = "<your-pin>"
 $env:REMOTE_PORT = "9000"
 python app.py
 ```
