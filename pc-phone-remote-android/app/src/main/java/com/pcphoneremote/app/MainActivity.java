@@ -21,11 +21,18 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.GridLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -34,25 +41,33 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "pc_remote_settings";
+    private static final String PREF_PROFILES = "device_profiles";
+    private static final String PREF_SELECTED_PROFILE = "selected_profile";
+    private static final String PREF_TAB = "selected_tab";
+    private static final String PREF_LIGHT_THEME = "light_theme";
     private static final String DEFAULT_HOST = "192.168.1.25";
     private static final String DEFAULT_PORT = "8765";
     private static final String DEFAULT_PIN = "";
 
-    private static final int BG = Color.rgb(13, 16, 18);
-    private static final int PANEL = Color.rgb(24, 29, 33);
-    private static final int PANEL_2 = Color.rgb(30, 36, 41);
-    private static final int TEXT = Color.rgb(247, 248, 249);
-    private static final int MUTED = Color.rgb(161, 171, 181);
-    private static final int LINE = Color.rgb(50, 59, 67);
-    private static final int ACCENT = Color.rgb(72, 199, 142);
-    private static final int ACCENT_DARK = Color.rgb(29, 128, 92);
-    private static final int WARN = Color.rgb(219, 151, 65);
-    private static final int DANGER = Color.rgb(224, 86, 86);
+    private int BG = Color.rgb(7, 7, 14);
+    private int PANEL = Color.rgb(18, 18, 30);
+    private int PANEL_2 = Color.rgb(27, 24, 43);
+    private int TEXT = Color.rgb(248, 247, 255);
+    private int MUTED = Color.rgb(153, 148, 171);
+    private int LINE = Color.rgb(55, 49, 79);
+    private int ACCENT = Color.rgb(161, 105, 255);
+    private int ACCENT_DARK = Color.rgb(96, 61, 180);
+    private int WARN = Color.rgb(235, 174, 86);
+    private int DANGER = Color.rgb(239, 92, 121);
+    private int SUCCESS = Color.rgb(75, 224, 163);
+    private boolean lightTheme;
 
     private static final String[] LANG_CODES = {"en", "ru", "uk", "sk", "cs", "ja", "de", "es", "fr", "pl"};
     private static final String[] LANG_NAMES = {
@@ -68,14 +83,20 @@ public class MainActivity extends Activity {
             "Polski"
     };
 
+    private EditText profileNameInput;
     private EditText hostInput;
     private EditText portInput;
     private EditText pinInput;
+    private Spinner profileSpinner;
     private TextView statusView;
     private TextView statusDot;
     private SharedPreferences prefs;
     private String sessionCookie;
     private boolean languageReady;
+    private boolean profileReady;
+    private List<DeviceProfile> profiles = new ArrayList<>();
+    private int selectedProfileIndex;
+    private int currentTab;
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @Override
@@ -94,7 +115,21 @@ public class MainActivity extends Activity {
     }
 
     private View buildContent() {
+        applyTheme();
         languageReady = false;
+        profileReady = false;
+        profiles = loadProfiles();
+        selectedProfileIndex = prefs.getInt(PREF_SELECTED_PROFILE, 0);
+        if (selectedProfileIndex < 0 || selectedProfileIndex >= profiles.size()) {
+            selectedProfileIndex = 0;
+        }
+        currentTab = prefs.getInt(PREF_TAB, 0);
+        if (currentTab < 0 || currentTab > 2) {
+            currentTab = 0;
+        }
+
+        LinearLayout screen = vertical();
+        screen.setBackgroundColor(BG);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -102,21 +137,26 @@ public class MainActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(28), dp(18), dp(24));
+        root.setPadding(dp(18), dp(30), dp(18), dp(18));
         scroll.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT
+        ));
+        screen.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
         ));
 
         LinearLayout hero = vertical();
         hero.setPadding(dp(2), 0, dp(2), dp(18));
         root.addView(hero);
 
-        TextView eyebrow = text(tr("eyebrow"), 13, ACCENT, Typeface.BOLD);
-        eyebrow.setLetterSpacing(0.06f);
+        TextView eyebrow = text(tr("eyebrow"), 12, ACCENT, Typeface.BOLD);
+        eyebrow.setLetterSpacing(0.08f);
         hero.addView(eyebrow);
 
-        TextView title = text("PC Remote", 34, TEXT, Typeface.BOLD);
+        TextView title = text("PC Remote", 32, TEXT, Typeface.BOLD);
         title.setPadding(0, dp(4), 0, dp(4));
         hero.addView(title);
 
@@ -127,14 +167,14 @@ public class MainActivity extends Activity {
         LinearLayout statusPanel = horizontal();
         statusPanel.setGravity(Gravity.CENTER_VERTICAL);
         statusPanel.setPadding(dp(14), dp(12), dp(14), dp(12));
-        statusPanel.setBackground(panelBg(PANEL_2, LINE, 8));
+        statusPanel.setBackground(panelBg(PANEL_2, subtleStroke(), 8));
         LinearLayout.LayoutParams statusParams = matchWrap();
         statusParams.setMargins(0, 0, 0, dp(14));
         root.addView(statusPanel, statusParams);
 
         statusDot = new TextView(this);
         statusDot.setText("");
-        statusDot.setBackground(ovalBg(MUTED));
+        statusDot.setBackground(ovalBg(ACCENT));
         LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(10), dp(10));
         dotParams.setMargins(0, 0, dp(10), 0);
         statusPanel.addView(statusDot, dotParams);
@@ -142,15 +182,31 @@ public class MainActivity extends Activity {
         statusView = text(tr("ready"), 14, MUTED, Typeface.NORMAL);
         statusPanel.addView(statusView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
+        if (currentTab == 0) {
+            buildRemoteTab(root);
+        } else if (currentTab == 1) {
+            buildDevicesTab(root);
+        } else {
+            buildSettingsTab(root);
+        }
+
+        addBottomTabs(screen);
+        return screen;
+    }
+
+    private void buildSettingsTab(LinearLayout root) {
+        LinearLayout themeCard = card(root, tr("themeTitle"), tr("themeSubtitle"));
+        themeCard.addView(themeToggle(), matchWrap());
+
         LinearLayout languageCard = card(root, tr("languageTitle"), tr("languageSubtitle"));
-        TextView languageLabel = text(tr("languageLabel"), 13, Color.rgb(204, 211, 217), Typeface.BOLD);
+        TextView languageLabel = text(tr("languageLabel"), 13, labelColor(), Typeface.BOLD);
         languageLabel.setPadding(dp(2), 0, dp(2), dp(6));
         languageCard.addView(languageLabel);
         Spinner languageSpinner = new Spinner(this);
         ArrayAdapter<String> adapter = languageAdapter();
         languageSpinner.setAdapter(adapter);
         languageSpinner.setSelection(languageIndex(lang()), false);
-        languageSpinner.setBackground(panelBg(Color.rgb(15, 18, 21), LINE, 8));
+        languageSpinner.setBackground(panelBg(fieldBg(), subtleStroke(), 8));
         languageSpinner.setPadding(dp(10), 0, dp(10), 0);
         languageCard.addView(languageSpinner, inputParams());
         languageSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -170,24 +226,155 @@ public class MainActivity extends Activity {
             public void onNothingSelected(AdapterView<?> parent) {
             }
         });
+    }
 
-        LinearLayout settingsCard = card(root, tr("settingsTitle"), tr("settingsSubtitle"));
-        hostInput = labeledInput(settingsCard, tr("hostLabel"), tr("hostHint"), prefs.getString("host", DEFAULT_HOST));
-        portInput = labeledInput(settingsCard, tr("portLabel"), tr("portHint"), prefs.getString("port", DEFAULT_PORT));
-        pinInput = labeledInput(settingsCard, "PIN", tr("pinHint"), prefs.getString("pin", DEFAULT_PIN));
+    private View themeToggle() {
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackground(panelBg(lightTheme ? Color.rgb(231, 235, 245) : Color.rgb(12, 12, 22), lightTheme ? Color.rgb(208, 215, 230) : Color.rgb(38, 34, 57), 18));
+        frame.setPadding(dp(6), dp(6), dp(6), dp(6));
+
+        TextView thumb = new TextView(this);
+        thumb.setBackground(gradientBg(lightTheme ? Color.rgb(119, 93, 255) : Color.rgb(122, 78, 220), lightTheme ? Color.rgb(92, 142, 255) : Color.rgb(74, 45, 145), ACCENT, 14));
+        frame.addView(thumb, new FrameLayout.LayoutParams(1, dp(48), Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        frame.post(() -> {
+            int availableWidth = frame.getWidth() - dp(12);
+            int thumbWidth = availableWidth / 2;
+            ViewGroup.LayoutParams params = thumb.getLayoutParams();
+            params.width = thumbWidth;
+            thumb.setLayoutParams(params);
+            thumb.setTranslationX(lightTheme ? thumbWidth : 0);
+        });
+
+        LinearLayout shell = horizontal();
+        shell.setGravity(Gravity.CENTER);
+        frame.addView(shell, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        TextView dark = themeOption(tr("themeDark"), !lightTheme);
+        TextView light = themeOption(tr("themeLight"), lightTheme);
+
+        dark.setOnClickListener(v -> setThemeMode(false, thumb, frame));
+        light.setOnClickListener(v -> setThemeMode(true, thumb, frame));
+
+        shell.addView(dark);
+        shell.addView(light);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(60)
+        );
+        params.setMargins(0, 0, 0, dp(12));
+        frame.setLayoutParams(params);
+        return frame;
+    }
+
+    private TextView themeOption(String label, boolean active) {
+        TextView option = new TextView(this);
+        option.setText(label);
+        option.setGravity(Gravity.CENTER);
+        option.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        option.setTextSize(14);
+        option.setTextColor(active ? TEXT : MUTED);
+        option.setBackgroundColor(Color.TRANSPARENT);
+        option.setClickable(true);
+        option.setFocusable(true);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(48), 1f);
+        option.setLayoutParams(params);
+        return option;
+    }
+
+    private void setThemeMode(boolean useLightTheme, View thumb, View frame) {
+        if (lightTheme == useLightTheme) {
+            animateTap(frame);
+            return;
+        }
+        int availableWidth = frame.getWidth() - dp(12);
+        int thumbWidth = availableWidth / 2;
+        thumb.animate()
+                .translationX(useLightTheme ? thumbWidth : 0)
+                .setDuration(260)
+                .setInterpolator(new DecelerateInterpolator())
+                .start();
+        prefs.edit().putBoolean(PREF_LIGHT_THEME, useLightTheme).apply();
+        ui.postDelayed(() -> rebuildContent(false), 280);
+    }
+
+    private void buildDevicesTab(LinearLayout root) {
+        DeviceProfile selectedProfile = profiles.get(selectedProfileIndex);
+        LinearLayout settingsCard = card(root, tr("profilesTitle"), tr("profilesSubtitle"));
+        TextView profileLabel = text(tr("profileSelectLabel"), 13, labelColor(), Typeface.BOLD);
+        profileLabel.setPadding(dp(2), 0, dp(2), dp(6));
+        settingsCard.addView(profileLabel);
+
+        profileSpinner = new Spinner(this);
+        profileSpinner.setAdapter(profileAdapter());
+        profileSpinner.setSelection(selectedProfileIndex, false);
+        profileSpinner.setBackground(panelBg(fieldBg(), subtleStroke(), 8));
+        profileSpinner.setPadding(dp(10), 0, dp(10), 0);
+        settingsCard.addView(profileSpinner, inputParams());
+
+        profileNameInput = labeledInput(settingsCard, tr("profileNameLabel"), tr("profileNameHint"), selectedProfile.name);
+        hostInput = labeledInput(settingsCard, tr("hostLabel"), tr("hostHint"), selectedProfile.host);
+        portInput = labeledInput(settingsCard, tr("portLabel"), tr("portHint"), selectedProfile.port);
+        pinInput = labeledInput(settingsCard, "PIN", tr("pinHint"), selectedProfile.pin);
         portInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         pinInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
 
-        TextView save = actionButton(tr("saveTitle"), tr("saveSub"), ACCENT, Color.rgb(7, 24, 17));
+        profileSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (!profileReady) {
+                    profileReady = true;
+                    return;
+                }
+                selectedProfileIndex = position;
+                prefs.edit().putInt(PREF_SELECTED_PROFILE, selectedProfileIndex).apply();
+                fillProfile(profiles.get(position));
+                saveSettings();
+                setStatus(tr("profileSelected"), ACCENT);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+
+        TextView save = actionButton(tr("saveProfileTitle"), tr("saveProfileSub"), ACCENT, Color.rgb(7, 24, 17));
         save.setOnClickListener(v -> {
             animateTap(v);
-            saveSettings();
+            saveCurrentProfile();
             hideKeyboard();
-            setStatus(tr("settingsSaved"), ACCENT);
+            setStatus(tr("profileSaved"), ACCENT);
         });
         settingsCard.addView(save);
 
-        TextView test = actionButton(tr("testTitle"), tr("testSub"), PANEL_2, TEXT);
+        LinearLayout profileButtons = horizontal();
+        settingsCard.addView(profileButtons, matchWrap());
+
+        TextView addProfile = actionButton(tr("addProfileTitle"), tr("addProfileSub"), PANEL_2, TEXT);
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(0, dp(58), 1f);
+        addParams.setMargins(0, dp(8), dp(4), 0);
+        addProfile.setLayoutParams(addParams);
+        addProfile.setOnClickListener(v -> {
+            animateTap(v);
+            createProfile();
+            hideKeyboard();
+        });
+        profileButtons.addView(addProfile);
+
+        TextView deleteProfile = actionButton(tr("deleteProfileTitle"), tr("deleteProfileSub"), Color.rgb(92, 42, 42), TEXT);
+        LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(0, dp(58), 1f);
+        deleteParams.setMargins(dp(4), dp(8), 0, 0);
+        deleteProfile.setLayoutParams(deleteParams);
+        deleteProfile.setOnClickListener(v -> {
+            animateTap(v);
+            deleteCurrentProfile();
+            hideKeyboard();
+        });
+        profileButtons.addView(deleteProfile);
+
+        TextView test = actionButton(tr("testTitle"), tr("testSub"), Color.rgb(34, 30, 54), TEXT);
         test.setOnClickListener(v -> {
             animateTap(v);
             saveSettings();
@@ -195,6 +382,38 @@ public class MainActivity extends Activity {
             runRequest("health", null);
         });
         settingsCard.addView(test);
+    }
+
+    private void buildRemoteTab(LinearLayout root) {
+        DeviceProfile profile = profiles.get(selectedProfileIndex);
+        LinearLayout selectedCard = vertical();
+        selectedCard.setPadding(dp(18), dp(18), dp(18), dp(18));
+        selectedCard.setBackground(lightTheme
+                ? gradientBg(Color.rgb(255, 255, 255), Color.rgb(232, 239, 255), Color.rgb(197, 211, 245), 8)
+                : gradientBg(Color.rgb(32, 24, 59), Color.rgb(18, 18, 30), Color.rgb(102, 67, 181), 8));
+        LinearLayout.LayoutParams selectedParams = matchWrap();
+        selectedParams.setMargins(0, 0, 0, dp(14));
+        root.addView(selectedCard, selectedParams);
+
+        TextView selectedTitle = text(tr("selectedDeviceTitle"), 13, lightTheme ? ACCENT_DARK : Color.rgb(200, 178, 255), Typeface.BOLD);
+        selectedTitle.setLetterSpacing(0.05f);
+        selectedCard.addView(selectedTitle);
+
+        TextView name = text(profile.name, 22, TEXT, Typeface.BOLD);
+        name.setPadding(0, dp(8), 0, 0);
+        selectedCard.addView(name);
+
+        TextView endpoint = text(endpointFor(profile), 14, MUTED, Typeface.NORMAL);
+        endpoint.setPadding(0, dp(6), 0, dp(8));
+        selectedCard.addView(endpoint);
+
+        TextView switchDevice = actionButton(tr("switchDeviceTitle"), tr("switchDeviceSub"), ACCENT_DARK, TEXT);
+        switchDevice.setOnClickListener(v -> {
+            animateTap(v);
+            prefs.edit().putInt(PREF_TAB, 1).apply();
+            rebuildContent(false);
+        });
+        selectedCard.addView(switchDevice);
 
         LinearLayout controlsCard = card(root, tr("controlsTitle"), tr("controlsSubtitle"));
         GridLayout grid = new GridLayout(this);
@@ -202,24 +421,77 @@ public class MainActivity extends Activity {
         grid.setPadding(0, dp(2), 0, 0);
         controlsCard.addView(grid, matchWrap());
 
-        addCommandButton(grid, tr("muteTitle"), tr("muteSub"), "mute", false, ACCENT_DARK, 2);
-        addCommandButton(grid, tr("lockTitle"), tr("lockSub"), "lock", false, PANEL_2, 1);
-        addCommandButton(grid, tr("sleepTitle"), tr("sleepSub"), "sleep", true, Color.rgb(86, 67, 40), 1);
-        addCommandButton(grid, tr("restartTitle"), tr("restartSub"), "restart", true, Color.rgb(83, 73, 45), 1);
-        addCommandButton(grid, tr("shutdownTitle"), tr("shutdownSub"), "shutdown", true, Color.rgb(92, 42, 42), 1);
+        addCommandButton(grid, tr("muteTitle"), "mute", false, ACCENT_DARK, 2, R.drawable.ic_action_mute);
+        addCommandButton(grid, tr("lockTitle"), "lock", false, Color.rgb(34, 30, 54), 1, R.drawable.ic_action_lock);
+        addCommandButton(grid, tr("sleepTitle"), "sleep", true, Color.rgb(70, 54, 91), 1, R.drawable.ic_action_sleep);
+        addCommandButton(grid, tr("restartTitle"), "restart", true, Color.rgb(74, 58, 98), 1, R.drawable.ic_action_restart);
+        addCommandButton(grid, tr("shutdownTitle"), "shutdown", true, Color.rgb(87, 41, 61), 1, R.drawable.ic_action_power);
 
         TextView note = text(tr("note"), 13, MUTED, Typeface.NORMAL);
         note.setPadding(dp(2), dp(12), dp(2), 0);
         note.setLineSpacing(dp(2), 1.0f);
         controlsCard.addView(note);
+    }
 
-        return scroll;
+    private void addBottomTabs(LinearLayout root) {
+        LinearLayout tabs = horizontal();
+        tabs.setGravity(Gravity.CENTER);
+        tabs.setPadding(dp(24), dp(10), dp(24), dp(14));
+        tabs.setBackgroundColor(bottomBarBg());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(84)
+        );
+        root.addView(tabs, params);
+
+        tabs.addView(tabButton(0, R.drawable.ic_remote_tab, tr("tabRemote")));
+        tabs.addView(tabButton(1, R.drawable.ic_devices_tab, tr("tabDevices")));
+        tabs.addView(tabButton(2, R.drawable.ic_settings_tab, tr("tabSettings")));
+    }
+
+    private ImageButton tabButton(int tab, int iconRes, String label) {
+        boolean active = currentTab == tab;
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconRes);
+        button.setColorFilter(active ? ACCENT : (lightTheme ? Color.rgb(129, 139, 157) : Color.rgb(225, 226, 235)));
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setPadding(dp(18), dp(14), dp(18), dp(14));
+        button.setContentDescription(label);
+        button.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+        button.setClickable(true);
+        button.setFocusable(true);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(60), 1f);
+        params.setMargins(dp(10), 0, dp(10), 0);
+        button.setLayoutParams(params);
+        button.setOnClickListener(v -> {
+            animateTap(v);
+            prefs.edit().putInt(PREF_TAB, tab).apply();
+            rebuildContent(false);
+        });
+        return button;
+    }
+
+    private DeviceProfile activeProfile() {
+        if (profiles == null || profiles.isEmpty()) {
+            profiles = loadProfiles();
+        }
+        if (selectedProfileIndex < 0 || selectedProfileIndex >= profiles.size()) {
+            selectedProfileIndex = 0;
+        }
+        return profiles.get(selectedProfileIndex);
+    }
+
+    private String endpointFor(DeviceProfile profile) {
+        if (profile.host.startsWith("http://") || profile.host.startsWith("https://")) {
+            return profile.host;
+        }
+        return profile.host + ":" + profile.port;
     }
 
     private LinearLayout card(LinearLayout root, String title, String subtitle) {
         LinearLayout card = vertical();
         card.setPadding(dp(16), dp(16), dp(16), dp(16));
-        card.setBackground(panelBg(PANEL, LINE, 8));
+        card.setBackground(panelBg(PANEL, subtleStroke(), 8));
         LinearLayout.LayoutParams params = matchWrap();
         params.setMargins(0, 0, 0, dp(14));
         root.addView(card, params);
@@ -235,6 +507,51 @@ public class MainActivity extends Activity {
         return card;
     }
 
+    private void applyTheme() {
+        lightTheme = prefs.getBoolean(PREF_LIGHT_THEME, false);
+        if (lightTheme) {
+            BG = Color.rgb(247, 249, 253);
+            PANEL = Color.rgb(255, 255, 255);
+            PANEL_2 = Color.rgb(239, 243, 250);
+            TEXT = Color.rgb(18, 22, 32);
+            MUTED = Color.rgb(102, 112, 132);
+            LINE = Color.rgb(218, 224, 235);
+            ACCENT = Color.rgb(67, 127, 255);
+            ACCENT_DARK = Color.rgb(42, 104, 224);
+            WARN = Color.rgb(225, 146, 46);
+            DANGER = Color.rgb(224, 78, 100);
+            SUCCESS = Color.rgb(34, 181, 130);
+        } else {
+            BG = Color.rgb(7, 7, 14);
+            PANEL = Color.rgb(18, 18, 30);
+            PANEL_2 = Color.rgb(27, 24, 43);
+            TEXT = Color.rgb(248, 247, 255);
+            MUTED = Color.rgb(153, 148, 171);
+            LINE = Color.rgb(55, 49, 79);
+            ACCENT = Color.rgb(161, 105, 255);
+            ACCENT_DARK = Color.rgb(96, 61, 180);
+            WARN = Color.rgb(235, 174, 86);
+            DANGER = Color.rgb(239, 92, 121);
+            SUCCESS = Color.rgb(75, 224, 163);
+        }
+    }
+
+    private int fieldBg() {
+        return lightTheme ? Color.rgb(247, 249, 253) : Color.rgb(12, 12, 22);
+    }
+
+    private int subtleStroke() {
+        return lightTheme ? Color.rgb(215, 222, 235) : Color.rgb(38, 34, 57);
+    }
+
+    private int bottomBarBg() {
+        return lightTheme ? Color.rgb(255, 255, 255) : Color.rgb(8, 10, 16);
+    }
+
+    private int labelColor() {
+        return lightTheme ? Color.rgb(45, 52, 68) : Color.rgb(204, 211, 217);
+    }
+
     private ArrayAdapter<String> languageAdapter() {
         return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, LANG_NAMES) {
             @Override
@@ -243,7 +560,7 @@ public class MainActivity extends Activity {
                 view.setTextColor(TEXT);
                 view.setTextSize(16);
                 view.setPadding(dp(8), 0, dp(8), 0);
-                view.setBackgroundColor(Color.rgb(15, 18, 21));
+                view.setBackgroundColor(fieldBg());
                 return view;
             }
 
@@ -259,8 +576,149 @@ public class MainActivity extends Activity {
         };
     }
 
+    private ArrayAdapter<String> profileAdapter() {
+        List<String> names = new ArrayList<>();
+        for (DeviceProfile profile : profiles) {
+            names.add(profile.name);
+        }
+        return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, names) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                view.setTextColor(TEXT);
+                view.setTextSize(16);
+                view.setPadding(dp(8), 0, dp(8), 0);
+                view.setBackgroundColor(fieldBg());
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                view.setTextColor(TEXT);
+                view.setTextSize(16);
+                view.setPadding(dp(16), dp(14), dp(16), dp(14));
+                view.setBackgroundColor(PANEL_2);
+                return view;
+            }
+        };
+    }
+
+    private List<DeviceProfile> loadProfiles() {
+        List<DeviceProfile> loaded = new ArrayList<>();
+        String raw = prefs.getString(PREF_PROFILES, "");
+        if (raw != null && !raw.isEmpty()) {
+            try {
+                JSONArray array = new JSONArray(raw);
+                for (int i = 0; i < array.length(); i++) {
+                    JSONObject item = array.getJSONObject(i);
+                    loaded.add(new DeviceProfile(
+                            item.optString("name", tr("defaultProfileName")),
+                            item.optString("host", DEFAULT_HOST),
+                            item.optString("port", DEFAULT_PORT),
+                            item.optString("pin", DEFAULT_PIN)
+                    ));
+                }
+            } catch (JSONException ignored) {
+                loaded.clear();
+            }
+        }
+
+        if (loaded.isEmpty()) {
+            loaded.add(new DeviceProfile(
+                    tr("defaultProfileName"),
+                    prefs.getString("host", DEFAULT_HOST),
+                    prefs.getString("port", DEFAULT_PORT),
+                    prefs.getString("pin", DEFAULT_PIN)
+            ));
+        }
+        return loaded;
+    }
+
+    private void persistProfiles() {
+        JSONArray array = new JSONArray();
+        try {
+            for (DeviceProfile profile : profiles) {
+                JSONObject item = new JSONObject();
+                item.put("name", profile.name);
+                item.put("host", profile.host);
+                item.put("port", profile.port);
+                item.put("pin", profile.pin);
+                array.put(item);
+            }
+        } catch (JSONException ignored) {
+            return;
+        }
+
+        prefs.edit()
+                .putString(PREF_PROFILES, array.toString())
+                .putInt(PREF_SELECTED_PROFILE, selectedProfileIndex)
+                .apply();
+    }
+
+    private void fillProfile(DeviceProfile profile) {
+        profileNameInput.setText(profile.name);
+        hostInput.setText(profile.host);
+        portInput.setText(profile.port);
+        pinInput.setText(profile.pin);
+    }
+
+    private DeviceProfile currentInputProfile() {
+        String name = profileNameInput.getText().toString().trim();
+        if (name.isEmpty()) {
+            name = tr("defaultProfileName");
+        }
+        return new DeviceProfile(
+                name,
+                hostInput.getText().toString().trim(),
+                portInput.getText().toString().trim(),
+                pinInput.getText().toString().trim()
+        );
+    }
+
+    private void saveCurrentProfile() {
+        saveSettings();
+        profiles.set(selectedProfileIndex, currentInputProfile());
+        persistProfiles();
+        refreshAfterProfileChange(false);
+    }
+
+    private void createProfile() {
+        saveCurrentProfile();
+        DeviceProfile profile = new DeviceProfile(
+                tr("newProfileName") + " " + (profiles.size() + 1),
+                DEFAULT_HOST,
+                DEFAULT_PORT,
+                DEFAULT_PIN
+        );
+        profiles.add(profile);
+        selectedProfileIndex = profiles.size() - 1;
+        persistProfiles();
+        refreshAfterProfileChange(false);
+        setStatus(tr("profileAdded"), ACCENT);
+    }
+
+    private void deleteCurrentProfile() {
+        if (profiles.size() <= 1) {
+            fillProfile(new DeviceProfile(tr("defaultProfileName"), DEFAULT_HOST, DEFAULT_PORT, DEFAULT_PIN));
+            saveCurrentProfile();
+            setStatus(tr("profileCleared"), WARN);
+            return;
+        }
+
+        profiles.remove(selectedProfileIndex);
+        selectedProfileIndex = Math.max(0, selectedProfileIndex - 1);
+        persistProfiles();
+        refreshAfterProfileChange(false);
+        setStatus(tr("profileDeleted"), DANGER);
+    }
+
+    private void refreshAfterProfileChange(boolean animate) {
+        rebuildContent(animate);
+    }
+
     private EditText labeledInput(LinearLayout parent, String label, String hint, String value) {
-        TextView labelView = text(label, 13, Color.rgb(204, 211, 217), Typeface.BOLD);
+        TextView labelView = text(label, 13, labelColor(), Typeface.BOLD);
         labelView.setPadding(dp(2), 0, dp(2), dp(6));
         parent.addView(labelView);
 
@@ -269,10 +727,10 @@ public class MainActivity extends Activity {
         edit.setText(value);
         edit.setSingleLine(true);
         edit.setTextColor(TEXT);
-        edit.setHintTextColor(Color.rgb(111, 121, 130));
+        edit.setHintTextColor(lightTheme ? Color.rgb(136, 146, 164) : Color.rgb(111, 121, 130));
         edit.setTextSize(16);
         edit.setPadding(dp(14), 0, dp(14), 0);
-        edit.setBackground(panelBg(Color.rgb(15, 18, 21), LINE, 8));
+        edit.setBackground(panelBg(fieldBg(), subtleStroke(), 8));
         parent.addView(edit, inputParams());
         return edit;
     }
@@ -300,7 +758,7 @@ public class MainActivity extends Activity {
         button.setIncludeFontPadding(false);
         button.setLineSpacing(dp(3), 1.0f);
         button.setPadding(dp(14), 0, dp(14), 0);
-        button.setBackground(panelBg(bgColor, brighten(bgColor), 8));
+        button.setBackground(panelBg(bgColor, softenStroke(bgColor), 8));
         button.setClickable(true);
         button.setFocusable(true);
 
@@ -313,11 +771,31 @@ public class MainActivity extends Activity {
         return button;
     }
 
-    private void addCommandButton(GridLayout grid, String title, String subtitle, String command, boolean confirm, int bgColor, int span) {
-        TextView button = commandLikeButton(title, subtitle, bgColor, TEXT, 78);
+    private void addCommandButton(GridLayout grid, String title, String command, boolean confirm, int bgColor, int span, int iconRes) {
+        LinearLayout button = vertical();
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(12), dp(10), dp(12), dp(10));
+        button.setBackground(panelBg(bgColor, softenStroke(bgColor), 8));
+        button.setClickable(true);
+        button.setFocusable(true);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(TEXT);
+        icon.setScaleType(ImageView.ScaleType.CENTER);
+        button.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(30)));
+
+        TextView label = text(title, 12, TEXT, Typeface.BOLD);
+        label.setGravity(Gravity.CENTER);
+        label.setPadding(0, dp(8), 0, 0);
+        button.addView(label, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
         GridLayout.LayoutParams params = new GridLayout.LayoutParams();
         params.width = 0;
-        params.height = dp(78);
+        params.height = dp(86);
         params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, span, 1f);
         params.setMargins(dp(4), dp(4), dp(4), dp(4));
         button.setLayoutParams(params);
@@ -367,8 +845,9 @@ public class MainActivity extends Activity {
     }
 
     private String baseUrl() {
-        String host = prefs.getString("host", DEFAULT_HOST);
-        String port = prefs.getString("port", DEFAULT_PORT);
+        DeviceProfile profile = activeProfile();
+        String host = profile.host;
+        String port = profile.port;
         if (host == null || host.isEmpty()) host = DEFAULT_HOST;
         if (port == null || port.isEmpty()) port = DEFAULT_PORT;
         if (host.startsWith("http://") || host.startsWith("https://")) {
@@ -425,7 +904,7 @@ public class MainActivity extends Activity {
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
         conn.setDoOutput(true);
 
-        String pin = prefs.getString("pin", DEFAULT_PIN);
+        String pin = activeProfile().pin;
         String body = "pin=" + (pin == null ? "" : pin);
         try (OutputStream out = conn.getOutputStream()) {
             out.write(body.getBytes(StandardCharsets.UTF_8));
@@ -526,6 +1005,16 @@ public class MainActivity extends Activity {
         return drawable;
     }
 
+    private GradientDrawable gradientBg(int start, int end, int stroke, int radius) {
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{start, end}
+        );
+        drawable.setCornerRadius(dp(radius));
+        drawable.setStroke(dp(1), stroke);
+        return drawable;
+    }
+
     private GradientDrawable ovalBg(int color) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.OVAL);
@@ -537,6 +1026,13 @@ public class MainActivity extends Activity {
         int red = Math.min(255, Color.red(color) + 22);
         int green = Math.min(255, Color.green(color) + 22);
         int blue = Math.min(255, Color.blue(color) + 22);
+        return Color.rgb(red, green, blue);
+    }
+
+    private int softenStroke(int color) {
+        int red = Math.min(255, Color.red(color) + 34);
+        int green = Math.min(255, Color.green(color) + 28);
+        int blue = Math.min(255, Color.blue(color) + 46);
         return Color.rgb(red, green, blue);
     }
 
@@ -593,6 +1089,35 @@ public class MainActivity extends Activity {
                 "languageSubtitle", "Choose the app language. The setting is saved on this phone.",
                 "languageLabel", "App language",
                 "languageSaved", "Language saved.",
+                "themeTitle", "Theme",
+                "themeSubtitle", "Switch between the premium dark look and a bright clean interface.",
+                "themeDark", "Dark",
+                "themeLight", "Light",
+                "profilesTitle", "Devices",
+                "profilesSubtitle", "Add several PCs or relay servers, then pick the device before using the remote.",
+                "profileSelectLabel", "Selected device",
+                "profileNameLabel", "Device name",
+                "profileNameHint", "Example: Home PC",
+                "defaultProfileName", "My PC",
+                "newProfileName", "New device",
+                "saveProfileTitle", "Save device",
+                "saveProfileSub", "Update this profile",
+                "addProfileTitle", "Add",
+                "addProfileSub", "New device",
+                "deleteProfileTitle", "Delete",
+                "deleteProfileSub", "Remove device",
+                "profileSaved", "Device profile saved.",
+                "profileAdded", "Device profile added.",
+                "profileDeleted", "Device profile deleted.",
+                "profileCleared", "Device profile cleared.",
+                "profileSelected", "Device selected.",
+                "selectedDeviceTitle", "Selected device",
+                "selectedDeviceSubtitle", "Commands will be sent to this profile.",
+                "switchDeviceTitle", "Switch device",
+                "switchDeviceSub", "Open device profiles",
+                "tabRemote", "Remote",
+                "tabDevices", "Devices",
+                "tabSettings", "Settings",
                 "settingsTitle", "Connection settings",
                 "settingsSubtitle", "These values must match the server running on your PC.",
                 "hostLabel", "PC IP address",
@@ -636,6 +1161,35 @@ public class MainActivity extends Activity {
                 "languageSubtitle", "\u0412\u044b\u0431\u0435\u0440\u0438 \u044f\u0437\u044b\u043a \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u044f. \u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u0441\u044f \u043d\u0430 \u044d\u0442\u043e\u043c \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0435.",
                 "languageLabel", "\u042f\u0437\u044b\u043a \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430",
                 "languageSaved", "\u042f\u0437\u044b\u043a \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d.",
+                "themeTitle", "\u0422\u0435\u043c\u0430",
+                "themeSubtitle", "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0430\u0439 \u0442\u0435\u043c\u043d\u044b\u0439 \u043f\u0440\u0435\u043c\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0441\u0442\u0438\u043b\u044c \u0438 \u0441\u0432\u0435\u0442\u043b\u044b\u0439 \u0447\u0438\u0441\u0442\u044b\u0439 \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441.",
+                "themeDark", "\u0422\u0435\u043c\u043d\u0430\u044f",
+                "themeLight", "\u0421\u0432\u0435\u0442\u043b\u0430\u044f",
+                "profilesTitle", "\u0423\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430",
+                "profilesSubtitle", "\u0414\u043e\u0431\u0430\u0432\u043b\u044f\u0439 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u041f\u041a \u0438\u043b\u0438 relay-\u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432, \u0430 \u043f\u0435\u0440\u0435\u0434 \u043f\u0443\u043b\u044c\u0442\u043e\u043c \u0432\u044b\u0431\u0438\u0440\u0430\u0439 \u043d\u0443\u0436\u043d\u043e\u0435 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e.",
+                "profileSelectLabel", "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u0435 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e",
+                "profileNameLabel", "\u0418\u043c\u044f \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430",
+                "profileNameHint", "\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: \u0414\u043e\u043c\u0430\u0448\u043d\u0438\u0439 \u041f\u041a",
+                "defaultProfileName", "\u041c\u043e\u0439 \u041f\u041a",
+                "newProfileName", "\u041d\u043e\u0432\u043e\u0435 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e",
+                "saveProfileTitle", "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e",
+                "saveProfileSub", "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u044d\u0442\u043e\u0442 \u043f\u0440\u043e\u0444\u0438\u043b\u044c",
+                "addProfileTitle", "\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c",
+                "addProfileSub", "\u041d\u043e\u0432\u044b\u0439 \u041f\u041a",
+                "deleteProfileTitle", "\u0423\u0434\u0430\u043b\u0438\u0442\u044c",
+                "deleteProfileSub", "\u0423\u0431\u0440\u0430\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c",
+                "profileSaved", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d.",
+                "profileAdded", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d.",
+                "profileDeleted", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0443\u0434\u0430\u043b\u0435\u043d.",
+                "profileCleared", "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u043e\u0447\u0438\u0449\u0435\u043d.",
+                "profileSelected", "\u0423\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e \u0432\u044b\u0431\u0440\u0430\u043d\u043e.",
+                "selectedDeviceTitle", "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u041f\u041a",
+                "selectedDeviceSubtitle", "\u041a\u043e\u043c\u0430\u043d\u0434\u044b \u0431\u0443\u0434\u0443\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0442\u044c\u0441\u044f \u0432 \u044d\u0442\u043e\u0442 \u043f\u0440\u043e\u0444\u0438\u043b\u044c.",
+                "switchDeviceTitle", "\u0421\u043c\u0435\u043d\u0438\u0442\u044c \u041f\u041a",
+                "switchDeviceSub", "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u0438",
+                "tabRemote", "\u041f\u0443\u043b\u044c\u0442",
+                "tabDevices", "\u041f\u041a",
+                "tabSettings", "\u0415\u0449\u0435",
                 "settingsTitle", "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u044f",
                 "settingsSubtitle", "\u042d\u0442\u0438 \u0434\u0430\u043d\u043d\u044b\u0435 \u0434\u043e\u043b\u0436\u043d\u044b \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u0442\u044c \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c \u043d\u0430 \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0435.",
                 "hostLabel", "IP \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0430",
@@ -718,5 +1272,19 @@ public class MainActivity extends Activity {
             map.put(pairs[i], pairs[i + 1]);
         }
         return map;
+    }
+
+    private static class DeviceProfile {
+        final String name;
+        final String host;
+        final String port;
+        final String pin;
+
+        DeviceProfile(String name, String host, String port, String pin) {
+            this.name = name == null || name.trim().isEmpty() ? "My PC" : name;
+            this.host = host == null ? "" : host;
+            this.port = port == null || port.trim().isEmpty() ? DEFAULT_PORT : port;
+            this.pin = pin == null ? "" : pin;
+        }
     }
 }

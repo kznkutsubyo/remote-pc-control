@@ -42,6 +42,17 @@ Logs are written to:
 pc-phone-remote\server.log
 ```
 
+## Locked Screen Commands
+
+Install command tasks once so power commands can be launched through Windows Task Scheduler while the session is locked:
+
+```powershell
+cd "pc-phone-remote"
+powershell -ExecutionPolicy Bypass -File .\install-command-tasks.ps1
+```
+
+The local server will use these tasks for `lock`, `sleep`, `restart`, and `shutdown` when they are available.
+
 ## Settings
 
 - `REMOTE_PIN`: access PIN. No public default is provided; set your own before real use.

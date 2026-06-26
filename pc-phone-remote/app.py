@@ -56,6 +56,13 @@ COMMANDS = {
     },
 }
 
+TASK_NAMES = {
+    "lock": "PC Phone Remote - Lock",
+    "sleep": "PC Phone Remote - Sleep",
+    "restart": "PC Phone Remote - Restart",
+    "shutdown": "PC Phone Remote - Shutdown",
+}
+
 
 def local_addresses(port: int) -> list[str]:
     addresses = {"127.0.0.1"}
@@ -77,6 +84,20 @@ def local_addresses(port: int) -> list[str]:
     return [f"http://{address}:{port}" for address in sorted(addresses)]
 
 
+def run_task(command: str) -> bool:
+    task_name = TASK_NAMES.get(command)
+    if not task_name:
+        return False
+
+    completed = subprocess.run(
+        ["schtasks.exe", "/Run", "/TN", task_name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    return completed.returncode == 0
+
+
 def run_command(command: str) -> None:
     if command == "mute":
         subprocess.Popen(
@@ -94,10 +115,14 @@ def run_command(command: str) -> None:
         return
 
     if command == "lock":
+        if run_task(command):
+            return
         subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
         return
 
     if command == "sleep":
+        if run_task(command):
+            return
         subprocess.Popen(
             [
                 "powershell",
@@ -113,10 +138,14 @@ def run_command(command: str) -> None:
         return
 
     if command == "restart":
+        if run_task(command):
+            return
         subprocess.Popen(["shutdown", "/r", "/t", "0"])
         return
 
     if command == "shutdown":
+        if run_task(command):
+            return
         subprocess.Popen(["shutdown", "/s", "/t", "0"])
         return
 

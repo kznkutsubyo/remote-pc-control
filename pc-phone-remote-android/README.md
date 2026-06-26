@@ -5,6 +5,8 @@ Native Android remote for the local Windows server in `pc-phone-remote`.
 ## What it does
 
 - Saves PC IP, port, and PIN.
+- Supports multiple saved device profiles.
+- Uses separate Remote, Devices, and Settings tabs.
 - Sends `mute`, `lock`, `sleep`, `restart`, and `shutdown` commands.
 - Uses plain local HTTP, so the Windows server must be running on the PC.
 

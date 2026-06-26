@@ -9,10 +9,13 @@ The project includes a Windows-side Python server, a native Android app, and an 
 ## Features
 
 - Native Android app with a polished dark interface.
+- Multiple device profiles in the Android app.
+- Bottom-tab navigation for Remote, Devices, and Settings.
 - Local Wi-Fi control over HTTP.
 - Optional remote mode through a public relay server.
 - PIN-protected command access.
 - Windows autostart through Task Scheduler.
+- Optional Task Scheduler command tasks for locked-screen power commands.
 - Hidden background launch with `pythonw.exe`.
 - Multilingual Android UI:
   - English
@@ -254,7 +257,6 @@ Keep the PIN set to your relay PIN.
 - Better relay deployment templates.
 - Wake-on-LAN helper.
 - Command history in the Android app.
-- Multiple PC profiles.
 - HTTPS setup guide with Caddy or Nginx.
 
 ## License
