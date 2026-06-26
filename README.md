@@ -1,86 +1,79 @@
 # PC Phone Remote
 
-PC Phone Remote is a small remote-control system for your own Windows PC. It lets you use an Android phone as a clean control panel for common actions such as muting sound, locking the desktop, putting the PC to sleep, restarting, and shutting down.
+Turn your Android phone into a clean remote control for your own Windows PC.
 
-The project includes a Windows-side Python server, a native Android app, and an optional relay mode for controlling the PC when the phone is not on the same network.
+PC Phone Remote is a small Windows + Android project for quick computer actions from a phone: mute sound, lock the desktop, put the PC to sleep, restart, or shut it down. It supports local Wi-Fi control, multiple saved device profiles, a polished native Android interface, and an optional relay mode for access outside the home network.
 
-> Built for personal administration of your own devices. Do not use it on computers you do not own or do not have permission to control.
+> This project is intended only for personal administration of devices you own or have permission to control.
 
-## Features
+## Highlights
 
-- Native Android app with a polished dark interface.
-- Multiple device profiles in the Android app.
-- Bottom-tab navigation for Remote, Devices, and Settings.
-- Local Wi-Fi control over HTTP.
-- Optional remote mode through a public relay server.
+- Native Android app, not just a web page.
+- Elegant dark UI with a light theme toggle.
+- Animated theme switcher.
+- Bottom navigation with Remote, Devices, and Settings tabs.
+- Multiple device profiles saved on the phone.
+- Vector icon buttons for PC commands.
+- Multilingual interface:
+  English, Russian, Ukrainian, Slovak, Czech, Japanese, German, Spanish, French, and Polish.
 - PIN-protected command access.
 - Windows autostart through Task Scheduler.
-- Optional Task Scheduler command tasks for locked-screen power commands.
-- Hidden background launch with `pythonw.exe`.
-- Multilingual Android UI:
-  - English
-  - Russian
-  - Ukrainian
-  - Slovak
-  - Czech
-  - Japanese
-  - German
-  - Spanish
-  - French
-  - Polish
-- Commands:
-  - toggle mute
-  - lock Windows
-  - sleep
-  - restart
-  - shutdown
+- Hidden server launch with `pythonw.exe`.
+- Optional Task Scheduler command tasks for locked-session power actions.
+- Optional relay mode for remote access outside the local network.
+
+## Commands
+
+The Android app can send these commands to the Windows server:
+
+| Command | Description |
+| --- | --- |
+| Mute | Toggle system mute |
+| Lock | Lock the Windows session |
+| Sleep | Put the PC to sleep |
+| Restart | Restart Windows |
+| Shutdown | Shut down Windows |
+
+## Screens And Flow
+
+The Android app is split into three main tabs:
+
+| Tab | Purpose |
+| --- | --- |
+| Remote | Send commands to the selected computer |
+| Devices | Add, edit, select, test, or delete PC profiles |
+| Settings | Change language and switch between dark/light themes |
+
+Each device profile stores:
+
+- device name
+- PC IP address or full relay URL
+- port
+- app PIN
+
+No real IP address or PIN is bundled in the project. Configure your own values after installation.
 
 ## Project Structure
 
 ```text
 .
-+-- pc-phone-remote/
-|   +-- app.py                # Local Windows HTTP server
-|   +-- relay_server.py       # Public relay server for remote access
-|   +-- relay_agent.py        # PC-side relay polling agent
-|   +-- run.bat               # Manual local server launcher
-|   +-- start-hidden.vbs      # Hidden autostart launcher
-|   +-- start-relay-agent.bat # Relay agent launcher
-|   +-- README.md             # Local server notes
-|   +-- README_REMOTE.md      # Relay mode notes
+|-- pc-phone-remote/
+|   |-- app.py                     # Local Windows HTTP server
+|   |-- relay_server.py            # Optional public relay server
+|   |-- relay_agent.py             # PC-side relay polling agent
+|   |-- install-command-tasks.ps1   # Optional locked-session command tasks
+|   |-- run.bat                    # Manual local server launcher
+|   |-- start-hidden.vbs           # Hidden autostart launcher
+|   |-- start-relay-agent.bat      # Relay agent launcher
+|   |-- README.md                  # Windows server notes
+|   `-- README_REMOTE.md           # Relay mode notes
 |
-+-- pc-phone-remote-android/
-    +-- app/
-    |   +-- src/main/java/com/pcphoneremote/app/MainActivity.java
-    +-- gradlew.bat
-    +-- README.md
+`-- pc-phone-remote-android/
+    |-- app/
+    |   `-- src/main/java/com/pcphoneremote/app/MainActivity.java
+    |-- gradlew.bat
+    `-- README.md
 ```
-
-## How It Works
-
-### Local Network Mode
-
-Use this when the phone and PC are on the same Wi-Fi or LAN.
-
-```text
-Android phone -> Windows PC server -> Windows command
-```
-
-The Android app sends requests directly to the PC server, for example:
-
-```text
-http://192.168.1.25:8765
-```
-
-### Remote Relay Mode
-
-Use this when the phone is outside the home network.
-
-```text
-Android phone -> public relay server -> PC relay agent -> Windows command
-```
-
-The PC opens an outgoing connection to the relay and polls for commands. This avoids router port forwarding and avoids exposing the local Windows server directly to the internet.
 
 ## Requirements
 
@@ -90,20 +83,22 @@ The PC opens an outgoing connection to the relay and polls for commands. This av
 - Python 3
 - Network access between phone and PC for local mode
 
-### Android App
+### Android
 
-- Android Studio or Gradle for building from source
-- Android device or emulator
+- Android phone or emulator
+- Android Studio or Gradle if building from source
 
-### Remote Relay Mode
+### Optional Remote Relay
 
-- A public server, VPS, or hosting platform
+- Public server, VPS, or hosting platform
 - HTTPS strongly recommended
-- A long random `RELAY_AGENT_TOKEN`
+- Long random relay agent token
 
-## Quick Start: Local Mode
+## Quick Start: Local Wi-Fi Mode
 
-Start the Windows server:
+Use this mode when the phone and PC are on the same Wi-Fi or LAN.
+
+### 1. Start The Windows Server
 
 ```powershell
 cd "pc-phone-remote"
@@ -111,25 +106,49 @@ $env:REMOTE_PIN = "<your-pin>"
 python app.py
 ```
 
-The terminal prints one or more local URLs:
+The server prints local addresses such as:
 
 ```text
-http://192.168.1.25:8765
+http://<your-pc-ip>:8765
 ```
 
-Open the Android app and enter:
+### 2. Add The PC In The Android App
+
+Open the Android app, go to the **Devices** tab, and create a profile:
 
 ```text
-IP:   192.168.1.25
-Port: 8765
-PIN:  use the same PIN you set in REMOTE_PIN
+Name:  Home PC
+IP:    <your-pc-ip>
+Port:  8765
+PIN:   the same PIN from REMOTE_PIN
 ```
 
-Then tap **Test connection**.
+Tap **Save device**, then **Test connection**.
+
+### 3. Use The Remote
+
+Go to the **Remote** tab and send commands to the selected device.
+
+## Build The Android App
+
+From PowerShell:
+
+```powershell
+cd "pc-phone-remote-android"
+.\gradlew.bat assembleDebug
+```
+
+The debug APK will be created here:
+
+```text
+pc-phone-remote-android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install that APK on your phone and add your PC from the **Devices** tab.
 
 ## Windows Autostart
 
-The server can be launched automatically after Windows logon using Task Scheduler.
+The server can start automatically after Windows logon using Task Scheduler.
 
 This project includes:
 
@@ -137,7 +156,7 @@ This project includes:
 pc-phone-remote/start-hidden.vbs
 ```
 
-It starts the server with `pythonw.exe`, so no console window stays open.
+It launches the server with `pythonw.exe`, so a console window does not stay open.
 
 Example Task Scheduler action:
 
@@ -147,66 +166,75 @@ Argument:  "C:\path\to\pc-phone-remote\start-hidden.vbs"
 Start in:  C:\path\to\pc-phone-remote
 ```
 
-## Build the Android App
+## Locked-Session Power Commands
 
-From PowerShell:
+Some commands can be routed through Windows Task Scheduler so they still work while the Windows session is locked.
+
+Install the optional tasks once:
 
 ```powershell
-cd "pc-phone-remote-android"
-.\gradlew.bat assembleDebug
+cd "pc-phone-remote"
+powershell -ExecutionPolicy Bypass -File .\install-command-tasks.ps1
 ```
 
-The debug APK will be created at:
+The local server will try to use those tasks for:
+
+- lock
+- sleep
+- restart
+- shutdown
+
+Unlocking Windows or storing/auto-entering a Windows account PIN is intentionally not part of this project.
+
+## Remote Access Outside The Local Network
+
+Local mode works only when the phone can reach the PC directly. For outside-network access, the project includes an optional relay mode:
 
 ```text
-pc-phone-remote-android/app/build/outputs/apk/debug/app-debug.apk
+Android phone -> public relay server -> PC relay agent -> Windows command
 ```
 
-Install it on your phone and configure the PC address, port, and PIN in the app.
+This avoids exposing the local Windows server directly to the public internet.
 
-## Remote Mode Setup
-
-### 1. Run the Relay Server
+### 1. Start The Relay Server
 
 On a public server:
 
 ```powershell
 cd "pc-phone-remote"
 $env:RELAY_PIN = "<your-pin>"
-$env:RELAY_AGENT_TOKEN = "replace-with-a-long-random-secret"
+$env:RELAY_AGENT_TOKEN = "<long-random-secret>"
 python relay_server.py --host 0.0.0.0 --port 8080
 ```
 
 Put HTTPS in front of the relay using your hosting provider, reverse proxy, or load balancer.
 
-Example public relay URL:
+Example relay URL:
 
 ```text
 https://remote.example.com
 ```
 
-### 2. Run the PC Relay Agent
+### 2. Start The PC Relay Agent
 
 On the Windows PC:
 
 ```powershell
 cd "pc-phone-remote"
 $env:RELAY_URL = "https://remote.example.com"
-$env:RELAY_AGENT_TOKEN = "replace-with-the-same-long-random-secret"
+$env:RELAY_AGENT_TOKEN = "<same-long-random-secret>"
 python relay_agent.py
 ```
 
-### 3. Configure the Android App
+### 3. Add A Relay Device In Android
 
-In the Android app, put the full relay URL into the IP field:
+In the **Devices** tab, put the full relay URL into the IP/URL field:
 
 ```text
 https://remote.example.com
 ```
 
-When the IP field starts with `http://` or `https://`, the app uses it as a full server URL and ignores the port field.
-
-Keep the PIN set to your relay PIN.
+When the address starts with `http://` or `https://`, the app treats it as a full server URL and ignores the port field.
 
 ## Configuration
 
@@ -222,8 +250,8 @@ Keep the PIN set to your relay PIN.
 
 | Variable | Description |
 | --- | --- |
-| `RELAY_PIN` | PIN required by the phone app |
-| `RELAY_AGENT_TOKEN` | Secret token used by the PC agent |
+| `RELAY_PIN` | PIN required by the Android app |
+| `RELAY_AGENT_TOKEN` | Secret token used by the PC relay agent |
 | `RELAY_HOST` | Relay bind address |
 | `RELAY_PORT` | Relay server port |
 
@@ -237,27 +265,30 @@ Keep the PIN set to your relay PIN.
 
 ## Security Notes
 
-- Change the default PIN before sharing or deploying.
+- Use a unique PIN.
 - Do not expose `app.py` directly to the public internet.
-- Use HTTPS for relay mode.
+- Use relay mode with HTTPS for remote access.
 - Use a long random `RELAY_AGENT_TOKEN`.
-- Keep the relay private to your own devices.
-- The app is intended for explicit, authorized control of your own Windows PC.
+- Keep relay credentials private.
+- Allow Windows Firewall access only for networks you trust.
+- Use this only for your own devices or systems you are allowed to control.
 
 ## Limitations
 
-- Turning on a fully powered-off PC is not handled by this app. That requires Wake-on-LAN support and separate network configuration.
-- Local mode requires the phone and PC to be on the same network.
-- Remote mode requires a public relay host.
-- The Android APK produced by `assembleDebug` is a debug build, not a signed release build for app stores.
+- Turning on a fully powered-off PC is not handled by this app. That requires Wake-on-LAN support and separate network setup.
+- Local Wi-Fi mode requires the phone and PC to be on the same reachable network.
+- Remote access requires a public relay host or equivalent deployment.
+- The APK from `assembleDebug` is a debug build, not a Play Store release build.
+- Windows lock-screen unlock automation is intentionally not included.
 
 ## Roadmap Ideas
 
-- Release APK signing.
-- Better relay deployment templates.
+- Signed release APK.
 - Wake-on-LAN helper.
-- Command history in the Android app.
+- Command history.
+- More relay deployment examples.
 - HTTPS setup guide with Caddy or Nginx.
+- Desktop tray icon for the Windows server.
 
 ## License
 
