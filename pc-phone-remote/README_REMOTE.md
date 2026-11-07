@@ -8,7 +8,9 @@ Architecture:
 Phone app -> public relay server -> PC relay agent -> Windows command
 ```
 
-The PC opens an outgoing connection to the relay, so the router does not need inbound ports.
+The PC opens an outgoing connection to the relay, so the router does not need inbound ports for commands and file/text exchange. RDP sign-in is a separate connection and may need an RD Gateway.
+
+Version 2 requires updating both `relay_server.py` and `relay_agent.py`. Deploy their companion modules (`app.py`, `companion.py`) alongside them. One relay instance serves one PC. Use a separate URL/instance for each remote PC.
 
 ## 1. Run the relay on a public server
 
@@ -54,3 +56,7 @@ use the same PIN you set in RELAY_PIN
 - Do not expose `app.py` directly to the internet.
 - Use HTTPS for the relay URL.
 - Use a long random `RELAY_AGENT_TOKEN`; it is the secret that lets only your PC fetch commands.
+- The token must be at least 24 characters and is sent in a header, not a URL.
+- Files are limited to 8 MiB, text to 64 KiB. Requests are temporarily buffered in memory; run your own trusted relay. HTTPS is transport encryption, not end-to-end encryption through the relay.
+- Requests wait up to 22 seconds for the agent; unclaimed expired jobs are dropped. A lost response after execution can leave the outcome uncertain, so clients do not automatically retry commands.
+- Configure the reverse proxy for request bodies of at least 12 MiB and a response timeout greater than 30 seconds. PC and relay clocks must be synchronized for job expiry.

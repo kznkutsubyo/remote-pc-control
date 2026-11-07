@@ -1,6 +1,6 @@
 # PC Phone Remote Android
 
-Native Android remote for the local Windows server in `pc-phone-remote`.
+Native Android remote for the v2 Windows server in `pc-phone-remote`, with an optional HTTPS relay.
 
 ## What it does
 
@@ -9,9 +9,15 @@ Native Android remote for the local Windows server in `pc-phone-remote`.
 - Has first-run onboarding for adding the first PC.
 - Imports PC setup codes from the Windows pairing page.
 - Supports dark and light themes.
-- Uses separate Remote, Devices, and Settings tabs.
+- Uses separate Remote, Transfer, Devices, and Settings tabs.
+- Animated tab indicator, theme slider/crossfade and button feedback, with reduced-motion support.
+- Uploads/downloads files up to 8 MiB through the Android system file picker.
+- Exchanges text and keeps separate local drafts for each PC.
+- Shows CPU, memory, uptime and lock state on refresh.
+- Adds media keys, a shutdown timer and per-device activity history.
+- Opens an installed RDP client for Windows sign-in using connection settings from the PC.
 - Sends `mute`, `lock`, `sleep`, `restart`, and `shutdown` commands.
-- Uses plain local HTTP, so the Windows server must be running on the PC.
+- Supports local HTTP and HTTPS relay URLs. The v2 server/agent must remain running.
 
 No real IP or PIN is bundled. Add your own PC in the **Devices** tab.
 
@@ -67,7 +73,7 @@ $env:REMOTE_PIN = "<your-pin>"
 python app.py
 ```
 
-The phone and PC must be on the same Wi-Fi/network.
+For direct mode, the phone must be able to reach the PC. For remote mode, update both the relay server and agent to v2. RDP sign-in uses a separate RDP connection or RD Gateway, not the application's HTTP relay.
 
 To import a PC profile faster, open this page on the PC after the server starts:
 
@@ -80,3 +86,9 @@ Scan the QR code with the phone camera, copy the setup code, then paste it into:
 ```text
 Devices -> Import setup
 ```
+
+Select a saved device to open the remote. Its refresh icon verifies the PIN and loads a status snapshot. Use Transfer for the PC's `shared/` folder and shared note. Windows passwords are entered in the RDP client, never in this app.
+
+Russian and English include all new explanatory text. Other languages retain their existing translations and add primary v2 labels; some new explanations fall back to English.
+
+Profile PINs and drafts are stored in app-private preferences, excluded from Android backups/device transfer. They are not protected by a separate encryption vault.

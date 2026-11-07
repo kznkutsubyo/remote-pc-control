@@ -1,0 +1,10 @@
+{
+  "pin": "",
+  "share_dir": "",
+  "rdp": {
+    "host": "",
+    "port": 3389,
+    "username": "",
+    "gateway": ""
+  }
+}

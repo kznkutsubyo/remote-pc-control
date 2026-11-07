@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PC Remote | Transfer</title>
+<style>
+  :root {color-scheme:dark;font-family:Segoe UI,system-ui,sans-serif;background:#101113;color:#f1f2f4}
+  *{box-sizing:border-box}body{max-width:760px;margin:auto;padding:32px 22px}header{display:flex;align-items:center;gap:16px}
+  h1{font-size:26px;margin:0}h2{font-size:17px;margin-top:32px}p,small{color:#a0a2ae;line-height:1.5}
+  button,input::file-selector-button{border:1px solid #32333b;background:#25262c;color:#bea0f2;padding:12px 16px;border-radius:6px;cursor:pointer;font:inherit}
+  button:disabled{opacity:.45;cursor:wait}button:focus-visible,textarea:focus-visible{outline:2px solid #bea0f2;outline-offset:2px}
+  textarea{display:block;width:100%;min-height:160px;background:#1c1d21;color:inherit;padding:16px;font:inherit;border:1px solid #32333b;border-radius:8px;margin:14px 0;resize:vertical}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.file{padding:14px 0;border-bottom:1px solid #32333b;display:flex;gap:12px;align-items:center}.file span{flex:1;overflow-wrap:anywhere}
+  #status{min-height:24px;color:#79d8be}a{color:#bea0f2}svg{flex-shrink:0}
+</style>
+<header><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bea0f2" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg><h1>PC Remote / Transfer</h1></header>
+<p>Shared folder · up to 8 MiB per file</p>
+<div id="status" role="status" aria-live="polite"></div>
+<h2>Files</h2>
+<div class="row"><input type="file" id="file" aria-label="Choose file"><button id="upload">Upload</button><button id="refresh">Refresh</button></div>
+<div id="files"></div>
+<h2>Shared text</h2>
+<textarea id="note" aria-label="Shared text" placeholder="Text, link or note"></textarea>
+<div class="row"><button id="save">Send text</button><button id="load">Receive text</button></div>
+<p><a href="/">Remote control</a></p>
+<script>
+const $=id=>document.getElementById(id), limit=8*1024*1024;
+async function api(action,values={}){
+  const response=await fetch('/api/v2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...values})});
+  const result=await response.json();if(!response.ok)throw Error(result.message||response.status);return result;
+}
+async function task(action){
+  const buttons=document.querySelectorAll('button');buttons.forEach(b=>b.disabled=true);$('status').textContent='Working...';
+  try{await action();$('status').textContent='Done';}catch(e){$('status').textContent=e.message;}
+  finally{buttons.forEach(b=>b.disabled=false);}
+}
+async function list(){
+  const result=await api('files.list');$('files').replaceChildren();
+  for(const file of result.files){
+    const row=document.createElement('div');row.className='file';const name=document.createElement('span');name.textContent=file.name;
+    const size=document.createElement('small');size.textContent=(file.size/1024).toFixed(1)+' KB';const download=document.createElement('button');download.textContent='Download';
+    download.onclick=()=>task(async()=>{
+      const data=await api('files.get',{name:file.name});const bytes=Uint8Array.from(atob(data.data),c=>c.charCodeAt(0));
+      const url=URL.createObjectURL(new Blob([bytes]));const link=document.createElement('a');link.href=url;link.download=file.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+    });row.append(name,size,download);$('files').append(row);
+  }
+  if(!result.files.length)$('files').textContent='No shared files yet';
+}
+$('refresh').onclick=()=>task(list);
+$('upload').onclick=()=>task(async()=>{
+  const file=$('file').files[0];if(!file)throw Error('Choose a file');if(file.size>limit)throw Error('File limit is 8 MiB');
+  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});
+  await api('files.put',{name:file.name,data});await list();
+});
+$('save').onclick=()=>task(()=>api('note.set',{text:$('note').value}));
+$('load').onclick=()=>{if(!$('note').value||confirm('Replace the current draft?'))task(async()=>{$('note').value=(await api('note.get')).text;});};
+task(list);
+</script>
+</html>

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pystray
 from PIL import Image, ImageDraw
+from companion import Companion, load_config
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -56,6 +57,10 @@ def open_pairing() -> None:
     webbrowser.open(f"http://127.0.0.1:{PORT}/pair")
 
 
+def open_shared_folder() -> None:
+    os.startfile(str(Companion(load_config()).root))
+
+
 def create_icon() -> Image.Image:
     image = Image.new("RGBA", (64, 64), (18, 18, 30, 255))
     draw = ImageDraw.Draw(image)
@@ -78,8 +83,11 @@ def main() -> None:
         create_icon(),
         "PC Phone Remote",
         menu=pystray.Menu(
+            pystray.MenuItem("Settings", lambda icon, item: subprocess.Popen([pythonw_path(), str(APP_DIR / "configure.py")], cwd=str(APP_DIR))),
             pystray.MenuItem("Open remote", lambda icon, item: open_remote()),
             pystray.MenuItem("Pair phone", lambda icon, item: open_pairing()),
+            pystray.MenuItem("Open shared folder", lambda icon, item: open_shared_folder()),
+            pystray.MenuItem("Exchange files and text", lambda icon, item: webbrowser.open(f"http://127.0.0.1:{PORT}/share")),
             pystray.MenuItem("Restart server", lambda icon, item: (stop_server(), start_server())),
             pystray.MenuItem("Stop server", lambda icon, item: stop_server()),
             pystray.MenuItem("Quit", quit_app),

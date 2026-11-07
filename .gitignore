@@ -12,6 +12,9 @@ env/
 .env
 .env.*
 local.properties
+config.json
+shared/
+artifacts/
 
 # Android / Gradle
 .gradle/
@@ -33,3 +36,4 @@ captures/
 Thumbs.db
 Desktop.ini
 .DS_Store
+release-dist/

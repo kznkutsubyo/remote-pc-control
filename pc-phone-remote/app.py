@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import html
 import http.cookies
 import ipaddress
@@ -14,6 +15,9 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlencode, urlparse
+from pathlib import Path
+
+from companion import Companion, FeatureError, MAX_BODY, control_windows_audio, load_config, run_on_input_desktop
 
 try:
     import qrcode
@@ -28,6 +32,7 @@ SESSION_COOKIE = "pc_remote_session"
 
 SESSIONS: dict[str, float] = {}
 SESSIONS_LOCK = threading.Lock()
+LOGIN_FAILURES: dict[str, list[float]] = {}
 
 
 COMMANDS = {
@@ -91,17 +96,40 @@ def local_addresses(port: int) -> list[str]:
     return [f"http://{address}:{port}" for address in sorted(addresses)]
 
 
+def outbound_ip() -> str:
+    for probe in (("8.8.8.8", 80), ("1.1.1.1", 80), ("192.168.1.1", 80)):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(probe)
+                candidate = sock.getsockname()[0]
+                ip = ipaddress.ip_address(candidate)
+                if not ip.is_loopback and not ip.is_unspecified:
+                    return candidate
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
 def preferred_host(port: int) -> str:
     fallback = f"http://127.0.0.1:{port}"
-    for address in local_addresses(port):
-        parsed = urlparse(address)
-        host = parsed.hostname or ""
-        try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            continue
-        if ip.is_private and not ip.is_loopback:
-            return address
+    # Prefer the real interface that owns the OS default route (avoids Hyper-V / WSL / Docker 172.x vEthernet switches).
+    routed = outbound_ip()
+    if routed:
+        return f"http://{routed}:{port}"
+
+    lan_172 = ipaddress.ip_network("172.16.0.0/12")
+    for skip_virtual_172 in (True, False):
+        for address in local_addresses(port):
+            parsed = urlparse(address)
+            host = parsed.hostname or ""
+            try:
+                ip = ipaddress.ip_address(host)
+            except ValueError:
+                continue
+            if ip.is_private and not ip.is_loopback:
+                if skip_virtual_172 and ip in lan_172:
+                    continue
+                return address
 
     for address in local_addresses(port):
         parsed = urlparse(address)
@@ -155,24 +183,25 @@ def run_task(command: str) -> bool:
 
 def run_command(command: str) -> None:
     if command == "mute":
-        subprocess.Popen(
-            [
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "(New-Object -ComObject WScript.Shell).SendKeys([char]173)",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        if Companion.session_locked():
+            raise FeatureError("Media controls require an unlocked Windows session", 409)
+        if control_windows_audio("mute") is None:
+            def _mute_vk() -> None:
+                ctypes.windll.user32.keybd_event(0xAD, 0, 0, 0)
+                ctypes.windll.user32.keybd_event(0xAD, 0, 2, 0)
+            run_on_input_desktop(_mute_vk)
         return
 
     if command == "lock":
         if run_task(command):
             return
-        subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
+        locked_ok = False
+        def _do_lock() -> None:
+            nonlocal locked_ok
+            locked_ok = bool(ctypes.windll.user32.LockWorkStation())
+        run_on_input_desktop(_do_lock)
+        if not locked_ok:
+            raise OSError("Windows rejected the lock request")
         return
 
     if command == "sleep":
@@ -189,19 +218,20 @@ def run_command(command: str) -> None:
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return
 
     if command == "restart":
         if run_task(command):
             return
-        subprocess.Popen(["shutdown", "/r", "/t", "0"])
+        subprocess.run(["shutdown", "/r", "/t", "0"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return
 
     if command == "shutdown":
         if run_task(command):
             return
-        subprocess.Popen(["shutdown", "/s", "/t", "0"])
+        subprocess.run(["shutdown", "/s", "/t", "0"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return
 
     raise ValueError(f"Unknown command: {command}")
@@ -391,6 +421,7 @@ def remote_page() -> bytes:
         f"""
         <h1>{APP_NAME}</h1>
         <p>Connected to this Windows PC.</p>
+        <p><a href="/share" style="color:var(--accent)">Files and shared text</a></p>
         <section class="grid">
           {''.join(buttons)}
         </section>
@@ -449,7 +480,11 @@ def pair_page(pin: str, port: int) -> bytes:
 
 
 class RemoteHandler(BaseHTTPRequestHandler):
-    server_version = "PCPhoneRemote/1.0"
+    server_version = "PCPhoneRemote/2.0"
+
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(35)
 
     def log_message(self, fmt: str, *args: object) -> None:
         timestamp = time.strftime("%H:%M:%S")
@@ -486,8 +521,36 @@ class RemoteHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(content)
+
+    def send_json(self, status: int, payload: dict) -> None:
+        self.send_bytes(status, json.dumps(payload).encode("utf-8"), "application/json")
+
+    def read_body(self, limit: int = MAX_BODY) -> bytes:
+        if self.headers.get("Transfer-Encoding"):
+            raise FeatureError("Chunked requests are not supported", 400)
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            raise FeatureError("Invalid Content-Length") from None
+        if not 0 <= length <= limit:
+            raise FeatureError("Request too large", 413)
+        data = self.rfile.read(length)
+        if len(data) != length:
+            raise FeatureError("Incomplete request")
+        return data
+
+    def api_request(self) -> dict:
+        try:
+            payload = json.loads(self.read_body())
+        except (ValueError, UnicodeDecodeError):
+            raise FeatureError("Invalid JSON") from None
+        if not isinstance(payload, dict):
+            raise FeatureError("Expected a JSON object")
+        return payload
 
     def redirect(self, location: str) -> None:
         self.send_response(303)
@@ -501,7 +564,18 @@ class RemoteHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/pair":
+            host = urlparse("http://" + self.headers.get("Host", "")).hostname
+            if self.client_address[0] not in {"127.0.0.1", "::1"} or host not in {"127.0.0.1", "localhost", "::1"}:
+                self.send_json(403, {"message": "Open pairing on this PC at http://127.0.0.1:" + str(self.port) + "/pair"})
+                return
             self.send_bytes(200, pair_page(self.pin, self.port))
+            return
+
+        if parsed.path == "/share":
+            if not self.is_authenticated():
+                self.send_bytes(200, login_page())
+            else:
+                self.send_bytes(200, Path(__file__).with_name("share.html").read_bytes())
             return
 
         if parsed.path != "/":
@@ -515,17 +589,47 @@ class RemoteHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length)
+        if parsed.path == "/api/v2":
+            if not self.is_authenticated():
+                self.send_json(401, {"message": "Not authenticated"})
+                return
+            try:
+                self.send_json(200, self.server.companion.dispatch(self.api_request()))
+            except FeatureError as exc:
+                self.send_json(exc.status, {"message": str(exc)})
+            except Exception:
+                self.send_json(500, {"message": "PC could not complete this operation"})
+            return
+
+        try:
+            body = self.read_body(8192)
+        except FeatureError as exc:
+            self.send_json(exc.status, {"message": str(exc)})
+            return
 
         if parsed.path == "/login":
+            address = self.client_address[0]
+            with SESSIONS_LOCK:
+                failures = [at for at in LOGIN_FAILURES.get(address, []) if at > time.time() - 60]
+                if len(failures) >= 10:
+                    self.send_json(429, {"message": "Too many attempts. Wait one minute."})
+                    return
             form = parse_qs(body.decode("utf-8", errors="replace"))
-            if form.get("pin", [""])[0] != self.pin:
+            if not self.pin or not secrets.compare_digest(form.get("pin", [""])[0].encode(), self.pin.encode()):
+                with SESSIONS_LOCK:
+                    if len(LOGIN_FAILURES) > 2048:
+                        LOGIN_FAILURES.clear()
+                    LOGIN_FAILURES[address] = failures + [time.time()]
                 self.send_bytes(403, login_page("Wrong PIN."))
                 return
 
             token = secrets.token_urlsafe(32)
             with SESSIONS_LOCK:
+                expired = [key for key, at in SESSIONS.items() if at < time.time()]
+                for key in expired:
+                    SESSIONS.pop(key, None)
+                if len(SESSIONS) >= 512:
+                    SESSIONS.pop(next(iter(SESSIONS)))
                 SESSIONS[token] = time.time() + 60 * 60 * 12
 
             self.send_response(303)
@@ -541,11 +645,11 @@ class RemoteHandler(BaseHTTPRequestHandler):
 
             try:
                 payload = json.loads(body.decode("utf-8"))
-                command = payload.get("command")
+                command = payload.get("command") if isinstance(payload, dict) else None
             except (json.JSONDecodeError, UnicodeDecodeError):
                 command = None
 
-            if command not in COMMANDS:
+            if not isinstance(command, str) or command not in COMMANDS:
                 self.send_bytes(400, json.dumps({"message": "Unknown command"}).encode("utf-8"), "application/json")
                 return
 
@@ -575,11 +679,13 @@ def main() -> int:
         print("This app is intended for Windows commands.", file=sys.stderr)
 
     args = parse_args()
+    config = load_config()
     server = ThreadingHTTPServer((args.host, args.port), RemoteHandler)
-    server.pin = args.pin  # type: ignore[attr-defined]
+    server.pin = args.pin or str(config.get("pin", ""))  # type: ignore[attr-defined]
+    server.companion = Companion(config, run_command)
 
     print(f"{APP_NAME} is running.")
-    if args.pin:
+    if server.pin:
         print("PIN is configured.")
     else:
         print("WARNING: no PIN is configured. Set REMOTE_PIN before real use.")
