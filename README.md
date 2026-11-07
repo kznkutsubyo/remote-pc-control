@@ -9,11 +9,21 @@ A native Kotlin + Jetpack Compose remote for everyday PC control: power, media, 
 ## Preview
 
 <p>
-  <img src="docs/screenshots/remote-dark.png" width="260" alt="Earlier Android remote screen in dark mode">
-  <img src="docs/screenshots/exchange-light.png" width="260" alt="Earlier Android transfer screen in light mode">
+  <img src="docs/screenshots/phone/remote-dark.png" width="250" alt="Android remote dashboard in dark mode">
+  <img src="docs/screenshots/phone/studio-dark.png" width="250" alt="Studio touchpad, scenes and presentation controls">
+  <img src="docs/screenshots/phone/transfer-dark.png" width="250" alt="Phone file transfer and shared text">
 </p>
 
-These are previews of the earlier Android interface with a demo profile. Version 2.2 introduces a Compose interface; current screenshots from a physical phone will replace these previews. See the [screenshot checklist](docs/SCREENSHOTS.md).
+Captured on a physical Android phone. Personal fields have been covered with opaque masks and the phone status bar removed; the remaining interface is unchanged. Screenshots illustrate the UI, not proof of a successful Windows unlock. See the [screenshot notes](docs/SCREENSHOTS.md).
+
+<details>
+<summary>Light theme, appearance settings and Wake-on-LAN</summary>
+<p>
+  <img src="docs/screenshots/phone/remote-light.png" width="250" alt="Remote dashboard in light mode">
+  <img src="docs/screenshots/phone/settings-dark.png" width="250" alt="Theme, colors and animation settings">
+  <img src="docs/screenshots/phone/studio-mac-masked.png" width="250" alt="Studio action deck and masked Wake-on-LAN address">
+</p>
+</details>
 
 ## What You Can Do
 
