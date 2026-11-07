@@ -468,24 +468,24 @@ object UnlockCrypto {
         phonePinChars: CharArray? = null
     ): JSONObject {
         val meta = getEnrollmentMeta(context, profileId)
-            ?: throw IllegalStateException("Вход с телефона ещё не привязан к этому ПК")
+            ?: throw IllegalStateException(Translations.tr(context, "errEnrollFirst"))
         val challengeId = challenge.optString("challenge_id", "")
         val nonceB64 = challenge.optString("nonce", "")
         val userSid = challenge.optString("user_sid", "")
         val pcPubB64 = challenge.optString("pc_pub", "")
         val pcPubFp = challenge.optString("pc_pub_fp", "")
         if (challengeId.isEmpty() || nonceB64.isEmpty() || userSid.isEmpty() || pcPubB64.isEmpty()) {
-            throw IllegalStateException("Некорректный challenge от службы Windows Unlock")
+            throw IllegalStateException(Translations.tr(context, "errInvalidChallenge"))
         }
 
         // Verify pinned PC identity key fingerprint and Windows user SID to prevent MITM key substitution.
         val pcPubBytes = b64UrlDecode(pcPubB64)
         val computedFp = b64UrlEncode(sha256(pcPubBytes))
         if (computedFp != pcPubFp || (meta.pcPubFp.isNotEmpty() && meta.pcPubFp != computedFp)) {
-            throw SecurityException("Ключ безопасности ПК не совпадает с привязанным (защита от MITM). Перепривяжите устройство.")
+            throw SecurityException(Translations.tr(context, "errMitmKeyMismatch"))
         }
         if (meta.userSid.isNotEmpty() && !meta.userSid.equals(userSid, ignoreCase = true)) {
-            throw SecurityException("SID пользователя Windows на ПК не совпадает с привязанной учётной записью.")
+            throw SecurityException(Translations.tr(context, "errSidMismatch"))
         }
 
         val pcPubKey = importPublicPoint65(pcPubBytes)
@@ -528,7 +528,7 @@ object UnlockCrypto {
                     innerJson.put("k", b64UrlEncode(unwrappedK))
                 } else if (wrappedPk.isNotEmpty() && wrappedPkIv.isNotEmpty() && pinSaltB64.isNotEmpty()) {
                     if (phonePinChars == null || phonePinChars.isEmpty()) {
-                        throw IllegalArgumentException("Введите PIN-код для входа с телефона")
+                        throw IllegalArgumentException(Translations.tr(context, "errEnterPhonePin"))
                     }
                     val salt = b64UrlDecode(pinSaltB64)
                     pinMask = derivePinMask(phonePinChars, salt)
@@ -539,19 +539,19 @@ object UnlockCrypto {
                         val fullTag = mac.doFinal("pcpr-pin-check-v1".toByteArray(StandardCharsets.UTF_8))
                         val actualTag = fullTag.copyOfRange(0, minOf(16, fullTag.size))
                         if (!MessageDigest.isEqual(expectedTag, actualTag)) {
-                            throw IllegalArgumentException("Неверный PIN-код телефона! Проверьте введённый код.")
+                            throw IllegalArgumentException(Translations.tr(context, "errWrongPhonePin"))
                         }
                     }
                     maskedPk = unwrapSecret(profileId, wrappedPk, wrappedPkIv)
                     if (maskedPk.size != 32 || pinMask.size != 32) {
-                        throw IllegalStateException("Повреждён локальный ключ привязки")
+                        throw IllegalStateException(Translations.tr(context, "errCorruptedKey"))
                     }
                     unwrappedK = ByteArray(32) { idx ->
                         (maskedPk[idx].toInt() xor pinMask[idx].toInt()).toByte()
                     }
                     innerJson.put("k", b64UrlEncode(unwrappedK))
                 } else {
-                    throw IllegalStateException("Для этого режима требуется ввести пароль Windows")
+                    throw IllegalStateException(Translations.tr(context, "errEnterWinPassword"))
                 }
             }
             innerBytes = innerJson.toString().toByteArray(StandardCharsets.UTF_8)
@@ -645,7 +645,7 @@ object UnlockCrypto {
                 .setTitle(title)
                 .setSubtitle(subtitle)
                 .setNegativeButton(cancelLabel, activity.mainExecutor) { _, _ ->
-                    onCancelled("Отменено пользователем")
+                    onCancelled(cancelLabel)
                 }
                 .build()
 
@@ -664,7 +664,7 @@ object UnlockCrypto {
                         if (errorCode == 11 || errorCode == 12 || errorCode == 1 || errorCode == 14) {
                             onVerified()
                         } else {
-                            onCancelled(errString?.toString() ?: "Биометрия отменена")
+                            onCancelled(errString?.toString() ?: cancelLabel)
                         }
                     }
                 }
@@ -678,9 +678,9 @@ object UnlockCrypto {
      * Sends a direct UDP Wake-on-LAN Magic Packet (`6x FF` + `16x MAC`) from the phone to LAN broadcast
      * and the target host IP so that a powered-off PC can be woken even when the Python server is offline.
      */
-    fun sendDirectMagicPacket(macAddress: String, targetHost: String) {
+    fun sendDirectMagicPacket(macAddress: String, targetHost: String, lang: String = "en") {
         val hex = macAddress.replace(Regex("[^0-9A-Fa-f]"), "")
-        if (hex.length != 12) throw IllegalArgumentException("Укажите корректный MAC-адрес (XX:XX:XX:XX:XX:XX)")
+        if (hex.length != 12) throw IllegalArgumentException(Translations.tr(lang, "errInvalidMac"))
         val macBytes = ByteArray(6)
         for (i in 0 until 6) {
             macBytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()

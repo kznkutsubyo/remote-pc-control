@@ -985,9 +985,9 @@ class MainActivity : ComponentActivity() {
                         )
                         Text(
                             text = if (active == null) tr("notConfigured")
-                            else if (!isOnline) active.endpoint
+                            else if (!isOnline) tr("notChecked")
                             else if (isLocked) tr("sessionLocked")
-                            else "${tr("online")} · ${active.endpoint}",
+                            else tr("online"),
                             color = palette.textSecondary,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -1223,8 +1223,8 @@ class MainActivity : ComponentActivity() {
                             Text(
                                 text = when {
                                     stateJson == null -> "● ${tr("notChecked")}"
-                                    isLocked -> "🔒 Windows заблокирована"
-                                    else -> "🔓 Сессия активна"
+                                    isLocked -> tr("badgeLocked")
+                                    else -> tr("badgeActive")
                                 },
                                 color = badgeFg,
                                 fontSize = 11.5.sp,
@@ -1262,7 +1262,7 @@ class MainActivity : ComponentActivity() {
                         )
                         CircularMetricGauge(
                             palette = palette,
-                            label = if (batteryVal != null) "Батарея" else "Диск C:",
+                            label = if (batteryVal != null) tr("battery") else tr("diskC"),
                             percent = batteryVal ?: diskVal,
                             ringColor = palette.accentSecondary
                         )
@@ -1305,14 +1305,14 @@ class MainActivity : ComponentActivity() {
                                 Text(
                                     text = if (isEnrolled) {
                                         if (enrollMeta!!.requiresPhonePin) {
-                                            "${enrollMeta.qualifiedUser} · Вход по PIN-коду телефона"
+                                            "${tr("unlockEnrolledBadge")} · ${tr("unlockSubPin")}"
                                         } else {
-                                            "${enrollMeta.qualifiedUser} · E2E Split-Key / Пароль"
+                                            "${tr("unlockEnrolledBadge")} · ${tr("unlockSubKey")}"
                                         }
                                     } else if (pcReportsEnrolled) {
-                                        "ПК настроен · Нажмите для входа"
+                                        tr("unlockSubPcReady")
                                     } else {
-                                        "Через предварительную привязку в Windows configure.bat"
+                                        tr("unlockSubPrebind")
                                     },
                                     color = Color.White.copy(alpha = 0.85f),
                                     fontSize = 11.sp
@@ -1823,7 +1823,7 @@ class MainActivity : ComponentActivity() {
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Тап = ЛКМ · Долгий тап = ПКМ · 2x тап = Двойной клик",
+                                text = tr("touchpadGestures"),
                                 color = palette.textSecondary.copy(alpha = 0.55f),
                                 fontSize = 10.5.sp
                             )
@@ -1837,16 +1837,16 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        SmallDeckChip(Modifier.weight(1f), palette, "ЛКМ") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnLeftClick")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "click").put("button", "left"), allowConcurrent = true)
                         }
-                        SmallDeckChip(Modifier.weight(1f), palette, "ПКМ") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnRightClick")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "click").put("button", "right"), allowConcurrent = true)
                         }
-                        SmallDeckChip(Modifier.weight(1f), palette, "Скролл ↑") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnScrollUp")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "scroll").put("delta", 240), allowConcurrent = true)
                         }
-                        SmallDeckChip(Modifier.weight(1f), palette, "Скролл ↓") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnScrollDown")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "scroll").put("delta", -240), allowConcurrent = true)
                         }
                     }
@@ -1858,13 +1858,13 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        SmallDeckChip(Modifier.weight(1f), palette, "F5 Слайд") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnSlideShow")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "key").put("key", "f5"), allowConcurrent = true)
                         }
-                        SmallDeckChip(Modifier.weight(1f), palette, "← Назад") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnPrevSlide")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "key").put("key", "left"), allowConcurrent = true)
                         }
-                        SmallDeckChip(Modifier.weight(1f), palette, "Далее →") {
+                        SmallDeckChip(Modifier.weight(1f), palette, tr("btnNextSlide")) {
                             runRpc(profile, JSONObject().put("action", "touchpad").put("mode", "key").put("key", "right"), allowConcurrent = true)
                         }
                         SmallDeckChip(Modifier.weight(1f), palette, "Esc") {
@@ -1952,6 +1952,7 @@ class MainActivity : ComponentActivity() {
                         fontSize = 14.5.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    var showMac by remember { mutableStateOf(false) }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = macInput,
@@ -1965,8 +1966,16 @@ class MainActivity : ComponentActivity() {
                                 persistProfilesToPrefs()
                             }
                         },
-                        label = { Text("MAC-адрес сетевой карты ПК (XX:XX:XX:XX:XX:XX)") },
+                        label = { Text(tr("wolMacLabel")) },
                         singleLine = true,
+                        visualTransformation = if (showMac) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            if (macInput.isNotEmpty()) {
+                                TextButton(onClick = { showMac = !showMac }) {
+                                    Text(if (showMac) tr("hide") else tr("show"), fontSize = 11.sp)
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
@@ -1976,13 +1985,13 @@ class MainActivity : ComponentActivity() {
                             worker.execute {
                                 var directOk = false
                                 try {
-                                    UnlockCrypto.sendDirectMagicPacket(targetMac, profile.host)
+                                    UnlockCrypto.sendDirectMagicPacket(targetMac, profile.host, langCode)
                                     directOk = true
                                 } catch (_: Exception) {
                                 }
                                 uiHandler.post {
                                     if (directOk) {
-                                        setBanner("Magic Packet отправлен на $targetMac", "success")
+                                        setBanner(tr("wolSentPrefix"), "success")
                                         addHistory(profile, "Wake-on-LAN", true)
                                     }
                                     // Also trigger relay/companion WOL if reachable
@@ -2032,7 +2041,7 @@ class MainActivity : ComponentActivity() {
                     }
                     if (procList.isEmpty()) {
                         Text(
-                            text = "Нажмите «Обновить», чтобы загрузить список ресурсоёмких процессов ПК.",
+                            text = tr("processesEmptyHint"),
                             color = palette.textSecondary,
                             fontSize = 12.sp
                         )
@@ -2059,7 +2068,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.padding(horizontal = 8.dp)
                                 )
                                 Text(
-                                    text = "${proc.memMb.roundToInt()} МБ",
+                                    text = "${proc.memMb.roundToInt()} ${tr("unitMb")}",
                                     color = palette.accent,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
@@ -2174,13 +2183,13 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = "📁 Куда сохраняются файлы на ПК:",
+                                text = tr("filesSaveLocationTitle"),
                                 color = palette.textPrimary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Загрузки\\PCPhoneRemote (C:\\Users\\<Имя>\\Downloads\\PCPhoneRemote)\nи папка проекта pc-phone-remote\\shared",
+                                text = tr("filesSaveLocationBody"),
                                 color = palette.textSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
@@ -2221,14 +2230,14 @@ class MainActivity : ComponentActivity() {
                             runRpc(
                                 profile,
                                 JSONObject().put("action", "files.open_folder"),
-                                historyLabel = "Открыть папку на ПК"
+                                historyLabel = tr("openPcFolderHistory")
                             )
                         },
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "📂 Открыть папку с файлами на экране ПК",
+                            text = tr("openPcFolderBtn"),
                             color = palette.textPrimary,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.SemiBold
@@ -2496,7 +2505,7 @@ class MainActivity : ComponentActivity() {
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = item.endpoint,
+                                            text = if (statusesMap.containsKey(item.id)) tr("online") else tr("selectedDeviceTitle"),
                                             color = palette.textSecondary,
                                             fontSize = 11.5.sp
                                         )
@@ -2534,14 +2543,14 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(6.dp))
                         if (enrollMeta != null) {
                             Text(
-                                text = "✓ Привязан к учётной записи: ${enrollMeta.qualifiedUser}\nSID: ${enrollMeta.userSid}\nОтпечаток ключа ПК: ${enrollMeta.pcPubFp.take(18)}…",
+                                text = "✓ ${tr("unlockEnrolledBadge")} (${active.name})\n${if (enrollMeta.requiresPhonePin) tr("unlockSubPin") else tr("unlockSubKey")}",
                                 color = palette.success,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
                             )
                         } else {
                             Text(
-                                text = "Для входа в систему с телефона сначала подтвердите свой пароль/PIN Windows в утилите configure.bat на ПК и вставьте одноразовый код привязки.",
+                                text = tr("unlockSettingsHint"),
                                 color = palette.textSecondary,
                                 fontSize = 12.sp
                             )
@@ -2560,11 +2569,11 @@ class MainActivity : ComponentActivity() {
                                     onClick = {
                                         UnlockCrypto.clearEnrollment(this@MainActivity, active.id)
                                         enrollmentRefreshTick++
-                                        setBanner("Ключ входа на телефоне удалён", "muted")
+                                        setBanner(tr("unlockKeyRemoved"), "muted")
                                     },
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text(text = "Отвязать", color = palette.danger, fontSize = 12.5.sp)
+                                    Text(text = tr("unpairBtn"), color = palette.danger, fontSize = 12.5.sp)
                                 }
                             }
                         }
@@ -2584,7 +2593,7 @@ class MainActivity : ComponentActivity() {
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(text = "Настройки RDP-клиента (${active.name})", color = palette.textPrimary, fontSize = 12.5.sp)
+                            Text(text = "${tr("rdpSettingsBtn")} (${active.name})", color = palette.textPrimary, fontSize = 12.5.sp)
                         }
                     }
                 }
@@ -2875,20 +2884,20 @@ class MainActivity : ComponentActivity() {
 
         fun executeUnlockFlow() {
             if (enrollMeta == null) {
-                errorMsg = "Сначала привяжите телефон к ПК кодом pcphone://enroll из configure.bat"
+                errorMsg = tr("errEnrollFirst")
                 return
             }
             if (useManualPassword && passwordInput.isEmpty()) {
-                errorMsg = "Введите пароль от учётной записи Microsoft / Windows"
+                errorMsg = tr("errEnterWinPassword")
                 return
             }
             if (!useManualPassword && requiresPhonePin) {
                 if (phonePinInput.isEmpty()) {
-                    errorMsg = "Введите ваш PIN-код для входа с телефона"
+                    errorMsg = tr("errEnterPhonePin")
                     return
                 }
                 if (!UnlockCrypto.checkPhonePinLocally(this@MainActivity, profile.id, phonePinInput.toCharArray())) {
-                    errorMsg = "Неверный PIN-код телефона! Проверьте введённый пинкод."
+                    errorMsg = tr("errWrongPhonePin")
                     return
                 }
             }
@@ -2921,15 +2930,28 @@ class MainActivity : ComponentActivity() {
                         val submitResp = client.call(submitPayload)
                         uiHandler.post {
                             stepState = 4
-                            val msg = submitResp.optString("message", tr("unlockSuccess"))
-                            successMsg = msg
+                            val alreadyUnlocked = submitResp.optBoolean("already_unlocked", false) ||
+                                submitResp.optString("message", "").contains("уже разблокирована")
+                            val providerInstalled = submitResp.optBoolean("provider_installed", true) &&
+                                !submitResp.optString("message", "").contains("Установить модуль")
+                            successMsg = when {
+                                alreadyUnlocked && providerInstalled -> tr("unlockAlreadyUnlocked")
+                                alreadyUnlocked -> tr("unlockVerifiedNeedProvider")
+                                else -> tr("unlockSuccess")
+                            }
                             addHistory(profile, tr("remoteLogin"), true)
                             refreshDeviceStatus(profile)
                         }
                     } catch (e: Exception) {
                         uiHandler.post {
                             stepState = 0
-                            errorMsg = e.message ?: "Не удалось выполнить вход в Windows"
+                            val rawErr = e.message ?: ""
+                            errorMsg = when {
+                                rawErr.contains("Модуль экрана блокировки") -> tr("errProviderNotInstalled")
+                                rawErr.contains("Windows lock screen provider did not respond") -> tr("errProviderTimeout")
+                                rawErr.isNotEmpty() -> rawErr
+                                else -> tr("errUnlockFailed")
+                            }
                             addHistory(profile, tr("remoteLogin"), false)
                         }
                     }
@@ -2940,7 +2962,7 @@ class MainActivity : ComponentActivity() {
                 UnlockCrypto.confirmUserPresence(
                     activity = this@MainActivity,
                     title = tr("unlockSheetTitle"),
-                    subtitle = "Подтвердите вход в ${enrollMeta.qualifiedUser} (${profile.name})",
+                    subtitle = "${tr("biometricConfirmSub")} ${profile.name}",
                     cancelLabel = tr("cancel"),
                     onVerified = { proceedToUnlock() },
                     onCancelled = { reason ->
@@ -2990,7 +3012,7 @@ class MainActivity : ComponentActivity() {
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = enrollMeta?.qualifiedUser ?: profile.name,
+                                text = profile.name,
                                 color = palette.textSecondary,
                                 fontSize = 12.sp
                             )
@@ -3045,7 +3067,7 @@ class MainActivity : ComponentActivity() {
                                         .clickable { useManualPassword = false }
                                 ) {
                                     Text(
-                                        text = if (requiresPhonePin) "🔢 По PIN телефона" else "🔐 Ключ + Биометрия",
+                                        text = if (requiresPhonePin) tr("unlockTabPin") else tr("unlockTabBio"),
                                         color = if (!useManualPassword) Color.White else palette.textPrimary,
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold
@@ -3062,7 +3084,7 @@ class MainActivity : ComponentActivity() {
                                     .clickable { useManualPassword = true }
                             ) {
                                 Text(
-                                    text = "⌨ Пароль Windows",
+                                    text = tr("unlockTabPassword"),
                                     color = if (useManualPassword) Color.White else palette.textPrimary,
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold
@@ -3074,14 +3096,14 @@ class MainActivity : ComponentActivity() {
                             OutlinedTextField(
                                 value = phonePinInput,
                                 onValueChange = { phonePinInput = it },
-                                label = { Text("PIN-код для входа с телефона") },
-                                placeholder = { Text("Введите PIN, заданный в configure.bat") },
+                                label = { Text(tr("phonePinLabel")) },
+                                placeholder = { Text(tr("phonePinPlaceholder")) },
                                 singleLine = true,
                                 visualTransformation = if (showPhonePin) VisualTransformation.None else PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 trailingIcon = {
                                     TextButton(onClick = { showPhonePin = !showPhonePin }) {
-                                        Text(if (showPhonePin) "Скрыть" else "Показать", fontSize = 11.sp)
+                                        Text(if (showPhonePin) tr("hide") else tr("show"), fontSize = 11.sp)
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -3092,14 +3114,14 @@ class MainActivity : ComponentActivity() {
                             OutlinedTextField(
                                 value = passwordInput,
                                 onValueChange = { passwordInput = it },
-                                label = { Text("Пароль аккаунта Microsoft / Windows") },
-                                placeholder = { Text("E2E зашифрованная отправка пароля") },
+                                label = { Text(tr("winAccountPasswordLabel")) },
+                                placeholder = { Text(tr("winAccountPasswordPlaceholder")) },
                                 singleLine = true,
                                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 trailingIcon = {
                                     TextButton(onClick = { showPassword = !showPassword }) {
-                                        Text(if (showPassword) "Скрыть" else "Показать", fontSize = 11.sp)
+                                        Text(if (showPassword) tr("hide") else tr("show"), fontSize = 11.sp)
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -3235,17 +3257,16 @@ class MainActivity : ComponentActivity() {
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "1. На компьютере запустите configure.bat (вкладка «Вход в Windows с телефона»).\n" +
-                            "2. Введите пароль от вашей учётной записи Microsoft / Windows и задайте короткий PIN-код для телефона.\n" +
-                            "3. Скопируйте сгенерированный код pcphone://enroll?... и вставьте его ниже:",
+                        text = tr("enrollInstructions"),
                         color = palette.textSecondary,
                         fontSize = 12.sp,
                         lineHeight = 16.5.sp
                     )
+                    var showEnrollHost by remember { mutableStateOf(false) }
                     OutlinedTextField(
                         value = codeInput,
                         onValueChange = { codeInput = it },
-                        placeholder = { Text("pcphone://enroll?token=...") },
+                        placeholder = { Text(tr("importPlaceholder")) },
                         minLines = 3,
                         maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
@@ -3254,14 +3275,20 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(
                             value = hostOverride,
                             onValueChange = { hostOverride = it },
-                            label = { Text("Адрес ПК (IP или Relay URL)") },
-                            placeholder = { Text("IP вашего ПК или https://remote.example.com") },
+                            label = { Text(tr("hostLabel")) },
+                            placeholder = { Text(tr("hostHint")) },
                             singleLine = true,
+                            visualTransformation = if (showEnrollHost) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                TextButton(onClick = { showEnrollHost = !showEnrollHost }) {
+                                    Text(if (showEnrollHost) tr("hide") else tr("show"), fontSize = 11.sp)
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
                         if (hostOverride.startsWith("172.")) {
                             Text(
-                                text = "Проверьте адрес: используйте доступный телефону сетевой интерфейс ПК.",
+                                text = tr("enrollSubnetWarning"),
                                 color = palette.warning,
                                 fontSize = 11.5.sp,
                                 lineHeight = 15.sp
@@ -3291,7 +3318,7 @@ class MainActivity : ComponentActivity() {
                             colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text(text = "Привязать", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(text = tr("pairActionBtn"), color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -3530,7 +3557,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 Text(
-                    text = if (holding) "${(progress * 100).roundToInt()}%" else "УДЕРЖИВАТЬ",
+                    text = if (holding) "${(progress * 100).roundToInt()}%" else tr("holdBadge"),
                     color = barColor,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -3629,6 +3656,8 @@ class MainActivity : ComponentActivity() {
         var host by remember { mutableStateOf(existing?.host ?: "") }
         var port by remember { mutableStateOf(existing?.port ?: "8765") }
         var pin by remember { mutableStateOf(existing?.pin ?: "") }
+        var showHost by remember { mutableStateOf(existing == null) }
+        var showPin by remember { mutableStateOf(false) }
         var errorText by remember { mutableStateOf("") }
 
         Dialog(onDismissRequest = onDismiss) {
@@ -3662,7 +3691,16 @@ class MainActivity : ComponentActivity() {
                         value = host,
                         onValueChange = { host = it },
                         label = { Text(tr("hostLabel")) },
+                        placeholder = { Text(tr("hostHint")) },
                         singleLine = true,
+                        visualTransformation = if (showHost) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            if (host.isNotEmpty()) {
+                                TextButton(onClick = { showHost = !showHost }) {
+                                    Text(if (showHost) tr("hide") else tr("show"), fontSize = 11.sp)
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -3677,8 +3715,17 @@ class MainActivity : ComponentActivity() {
                         value = pin,
                         onValueChange = { pin = it },
                         label = { Text("${tr("pinHint")} (PIN)") },
-                        placeholder = { Text("Например: 44557139") },
+                        placeholder = { Text(tr("pinPlaceholder")) },
                         singleLine = true,
+                        visualTransformation = if (showPin) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            if (pin.isNotEmpty()) {
+                                TextButton(onClick = { showPin = !showPin }) {
+                                    Text(if (showPin) tr("hide") else tr("show"), fontSize = 11.sp)
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -3802,7 +3849,7 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = rawCode,
                         onValueChange = { rawCode = it },
-                        placeholder = { Text("pcphone://enroll?... или pcphone://add?...") },
+                        placeholder = { Text(tr("importPlaceholder")) },
                         minLines = 3,
                         maxLines = 5,
                         modifier = Modifier.fillMaxWidth()
@@ -3847,6 +3894,7 @@ class MainActivity : ComponentActivity() {
         var rdpPort by remember { mutableStateOf(initialRdp.optString("port", "3389")) }
         var rdpUser by remember { mutableStateOf(initialRdp.optString("username", "")) }
         var rdpGateway by remember { mutableStateOf(initialRdp.optString("gateway", "")) }
+        var showRdpSensitive by remember { mutableStateOf(false) }
         var err by remember { mutableStateOf("") }
 
         Dialog(onDismissRequest = onDismiss) {
@@ -3878,6 +3926,14 @@ class MainActivity : ComponentActivity() {
                         onValueChange = { rdpHost = it },
                         label = { Text(tr("rdpAddress")) },
                         singleLine = true,
+                        visualTransformation = if (showRdpSensitive) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            if (rdpHost.isNotEmpty()) {
+                                TextButton(onClick = { showRdpSensitive = !showRdpSensitive }) {
+                                    Text(if (showRdpSensitive) tr("hide") else tr("show"), fontSize = 11.sp)
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -3893,6 +3949,7 @@ class MainActivity : ComponentActivity() {
                         onValueChange = { rdpUser = it },
                         label = { Text(tr("rdpUser")) },
                         singleLine = true,
+                        visualTransformation = if (showRdpSensitive) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -3900,6 +3957,7 @@ class MainActivity : ComponentActivity() {
                         onValueChange = { rdpGateway = it },
                         label = { Text("RD Gateway (${tr("optional")})") },
                         singleLine = true,
+                        visualTransformation = if (showRdpSensitive) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (err.isNotEmpty()) {
@@ -3987,7 +4045,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    text = p.endpoint,
+                                    text = if (selected) "✓ ${tr("selectedDeviceTitle")}" else tr("online"),
                                     color = palette.textSecondary,
                                     fontSize = 11.5.sp
                                 )
@@ -4004,18 +4062,21 @@ class MainActivity : ComponentActivity() {
 
     private fun formatDuration(seconds: Long): String {
         val hours = seconds / 3600
+        val d = tr("unitDay")
+        val h = tr("unitHour")
+        val m = tr("unitMinShort")
         return when {
-            hours >= 24 -> "${hours / 24}д ${hours % 24}ч"
-            hours > 0 -> "${hours}ч ${(seconds % 3600) / 60}м"
-            else -> "${seconds / 60}м"
+            hours >= 24 -> "${hours / 24}$d ${hours % 24}$h"
+            hours > 0 -> "${hours}$h ${(seconds % 3600) / 60}$m"
+            else -> "${seconds / 60}$m"
         }
     }
 
     private fun formatSize(bytes: Long): String {
         return when {
-            bytes >= 1048576 -> String.format(Locale.ROOT, "%.1f МБ", bytes / 1048576.0)
-            bytes >= 1024 -> String.format(Locale.ROOT, "%.1f КБ", bytes / 1024.0)
-            else -> "$bytes Б"
+            bytes >= 1048576 -> String.format(Locale.ROOT, "%.1f %s", bytes / 1048576.0, tr("unitMb"))
+            bytes >= 1024 -> String.format(Locale.ROOT, "%.1f %s", bytes / 1024.0, tr("unitKb"))
+            else -> "$bytes ${tr("unitByte")}"
         }
     }
 }
