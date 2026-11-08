@@ -336,13 +336,13 @@ HRESULT CPhoneUnlockCredential::GetStringValue(DWORD dwFieldID, PWSTR* ppwsz) {
     *ppwsz = nullptr;
     switch (dwFieldID) {
     case PFI_LABEL:
-        return SHStrDupW(L"Вход с телефона (PC Remote)", ppwsz);
+        return SHStrDupW(L"Phone Sign-In (PC Remote)", ppwsz);
     case PFI_LARGE_TEXT:
-        return SHStrDupW(L"Вход с телефона", ppwsz);
+        return SHStrDupW(L"Phone Sign-In", ppwsz);
     case PFI_SMALL_TEXT:
-        return SHStrDupW(L"Откройте приложение PC Remote на телефоне и подтвердите вход", ppwsz);
+        return SHStrDupW(L"Open PC Remote on your phone and tap Unlock", ppwsz);
     case PFI_SUBMIT_BUTTON:
-        return SHStrDupW(L"Проверить запрос с телефона", ppwsz);
+        return SHStrDupW(L"Check phone sign-in request", ppwsz);
     default:
         return E_INVALIDARG;
     }
@@ -385,7 +385,7 @@ HRESULT CPhoneUnlockCredential::GetSerialization(
     reqW.Str("op", "provider.acquire").Str("user_sid", WideToUtf8(userSid_));
     std::string respStr;
     if (!PipeTransact(providerPipe_, reqW.Build(), respStr, /*requireSystemServer=*/true, allowedServerSid_, 4000)) {
-        SHStrDupW(L"Служба PC Remote недоступна. Войдите обычным паролем или PIN.", ppwszOptionalStatusText);
+        SHStrDupW(L"PC Remote Service is unreachable. Sign in with password or PIN.", ppwszOptionalStatusText);
         *pcpsiOptionalStatusIcon = CPSI_WARNING;
         return S_OK;
     }
@@ -395,7 +395,7 @@ HRESULT CPhoneUnlockCredential::GetSerialization(
     Wipe(respStr);
     if (!parsed || Get(resp, "ok") != "true") {
         for (auto& kv : resp) Wipe(kv.second);
-        SHStrDupW(L"Ожидание подтверждения входа на телефоне…", ppwszOptionalStatusText);
+        SHStrDupW(L"Waiting for phone confirmation...", ppwszOptionalStatusText);
         *pcpsiOptionalStatusIcon = CPSI_NONE;
         return S_OK;
     }
@@ -408,7 +408,7 @@ HRESULT CPhoneUnlockCredential::GetSerialization(
 
     if (_wcsicmp(respSid.c_str(), userSid_.c_str()) != 0 || password.empty()) {
         Wipe(password);
-        SHStrDupW(L"Запрос входа предназначен для другой учётной записи.", ppwszOptionalStatusText);
+        SHStrDupW(L"Sign-in request belongs to a different Windows user account.", ppwszOptionalStatusText);
         *pcpsiOptionalStatusIcon = CPSI_ERROR;
         return S_OK;
     }
@@ -500,10 +500,10 @@ HRESULT CPhoneUnlockCredential::ReportResult(
     }
 
     if (ntsStatus == STATUS_LOGON_FAILURE) {
-        SHStrDupW(L"Windows отклонила пароль. Проверьте пароль или обновите привязку телефона.", ppwszOptionalStatusText);
+        SHStrDupW(L"Windows rejected the password. Verify your password or re-pair phone.", ppwszOptionalStatusText);
         *pcpsiOptionalStatusIcon = CPSI_ERROR;
     } else if (ntsStatus == STATUS_ACCOUNT_LOCKED_OUT || ntsSubstatus == STATUS_ACCOUNT_LOCKED_OUT) {
-        SHStrDupW(L"Учётная запись временно заблокирована из-за неверных попыток входа.", ppwszOptionalStatusText);
+        SHStrDupW(L"Account is temporarily locked out due to failed attempts.", ppwszOptionalStatusText);
         *pcpsiOptionalStatusIcon = CPSI_WARNING;
     }
     return S_OK;

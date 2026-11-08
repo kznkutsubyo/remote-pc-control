@@ -28,7 +28,7 @@ if errorlevel 1 exit /b 1
 pushd "$buildDir"
 
 echo [1/3] Building PhoneUnlockProvider.dll (Credential Provider v2)...
-cl /nologo /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE /LD ^
+cl /nologo /utf-8 /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE /LD ^
     "$root\src\provider\provider.cpp" ^
     "$root\src\common\ipc.cpp" ^
     "$root\src\common\crypto.cpp" ^
@@ -36,7 +36,7 @@ cl /nologo /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE /LD ^
 if errorlevel 1 exit /b 1
 
 echo [2/3] Building PhoneUnlockService.exe (LocalSystem Unlock Service)...
-cl /nologo /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE ^
+cl /nologo /utf-8 /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE ^
     "$root\src\service\main.cpp" ^
     "$root\src\service\unlock_engine.cpp" ^
     "$root\src\common\ipc.cpp" ^
@@ -45,7 +45,7 @@ cl /nologo /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE ^
 if errorlevel 1 exit /b 1
 
 echo [3/3] Building PhoneUnlockSelfTest.exe...
-cl /nologo /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE ^
+cl /nologo /utf-8 /std:c++17 /EHsc /O2 /W3 /DUNICODE /D_UNICODE ^
     "$root\src\tests\selftest.cpp" ^
     "$root\src\provider\provider.cpp" ^
     "$root\src\service\unlock_engine.cpp" ^

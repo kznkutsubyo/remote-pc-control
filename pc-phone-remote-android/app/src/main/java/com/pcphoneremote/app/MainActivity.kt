@@ -1952,6 +1952,13 @@ class MainActivity : ComponentActivity() {
                         fontSize = 14.5.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    Text(
+                        text = tr("wolHint"),
+                        color = palette.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                    )
                     var showMac by remember { mutableStateOf(false) }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
@@ -2946,9 +2953,14 @@ class MainActivity : ComponentActivity() {
                         uiHandler.post {
                             stepState = 0
                             val rawErr = e.message ?: ""
+                            val translated = tr(rawErr)
                             errorMsg = when {
                                 rawErr.contains("Модуль экрана блокировки") -> tr("errProviderNotInstalled")
                                 rawErr.contains("Windows lock screen provider did not respond") -> tr("errProviderTimeout")
+                                rawErr == "loginFailed" -> tr("loginFailed")
+                                rawErr == "rateLimited" -> tr("rateLimited")
+                                rawErr == "updateServer" -> tr("updateServer")
+                                translated.isNotEmpty() && translated != rawErr -> translated
                                 rawErr.isNotEmpty() -> rawErr
                                 else -> tr("errUnlockFailed")
                             }

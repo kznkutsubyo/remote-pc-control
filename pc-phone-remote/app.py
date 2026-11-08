@@ -167,18 +167,36 @@ def qr_svg_data_uri(value: str) -> str:
     return "data:image/svg+xml;charset=utf-8," + quote(raw)
 
 
-def run_task(command: str) -> bool:
-    task_name = TASK_NAMES.get(command)
-    if not task_name:
-        return False
+def enable_shutdown_privilege() -> bool:
+    if os.name != "nt":
+        return True
+    try:
+        k32 = ctypes.windll.kernel32
+        adv = ctypes.windll.advapi32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        adv.OpenProcessToken.argtypes = [ctypes.c_void_p, ctypes.wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)]
+        hToken = ctypes.c_void_p()
+        if not adv.OpenProcessToken(k32.GetCurrentProcess(), 0x0020 | 0x0008, ctypes.byref(hToken)):
+            return False
 
-    completed = subprocess.run(
-        ["schtasks.exe", "/Run", "/TN", task_name],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
-    return completed.returncode == 0
+        class LUID(ctypes.Structure):
+            _fields_ = [("LowPart", ctypes.wintypes.DWORD), ("HighPart", ctypes.wintypes.LONG)]
+        class LUID_AND_ATTRIBUTES(ctypes.Structure):
+            _fields_ = [("Luid", LUID), ("Attributes", ctypes.wintypes.DWORD)]
+        class TOKEN_PRIVILEGES(ctypes.Structure):
+            _fields_ = [("PrivilegeCount", ctypes.wintypes.DWORD), ("Privileges", LUID_AND_ATTRIBUTES * 1)]
+
+        luid = LUID()
+        if adv.LookupPrivilegeValueW(None, "SeShutdownPrivilege", ctypes.byref(luid)):
+            tp = TOKEN_PRIVILEGES()
+            tp.PrivilegeCount = 1
+            tp.Privileges[0].Luid = luid
+            tp.Privileges[0].Attributes = 0x00000002  # SE_PRIVILEGE_ENABLED
+            adv.AdjustTokenPrivileges(hToken, False, ctypes.byref(tp), 0, None, None)
+        k32.CloseHandle(hToken)
+        return True
+    except Exception:
+        return False
 
 
 def run_command(command: str) -> None:
@@ -193,45 +211,42 @@ def run_command(command: str) -> None:
         return
 
     if command == "lock":
-        if run_task(command):
-            return
         locked_ok = False
         def _do_lock() -> None:
             nonlocal locked_ok
             locked_ok = bool(ctypes.windll.user32.LockWorkStation())
         run_on_input_desktop(_do_lock)
         if not locked_ok:
-            raise OSError("Windows rejected the lock request")
+            subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"],
+                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         return
 
     if command == "sleep":
-        if run_task(command):
-            return
+        enable_shutdown_privilege()
+        try:
+            powrprof = ctypes.windll.powrprof
+            powrprof.SetSuspendState.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+            powrprof.SetSuspendState.restype = ctypes.c_int
+            if powrprof.SetSuspendState(0, 1, 0):
+                return
+        except Exception:
+            pass
         subprocess.Popen(
-            [
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)",
-            ],
+            ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         return
 
     if command == "restart":
-        if run_task(command):
-            return
-        subprocess.run(["shutdown", "/r", "/t", "0"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        enable_shutdown_privilege()
+        subprocess.run(["shutdown.exe", "/r", "/f", "/t", "0"], check=False, creationflags=subprocess.CREATE_NO_WINDOW)
         return
 
     if command == "shutdown":
-        if run_task(command):
-            return
-        subprocess.run(["shutdown", "/s", "/t", "0"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        enable_shutdown_privilege()
+        subprocess.run(["shutdown.exe", "/s", "/f", "/t", "0"], check=False, creationflags=subprocess.CREATE_NO_WINDOW)
         return
 
     raise ValueError(f"Unknown command: {command}")
@@ -615,7 +630,15 @@ class RemoteHandler(BaseHTTPRequestHandler):
                     self.send_json(429, {"message": "Too many attempts. Wait one minute."})
                     return
             form = parse_qs(body.decode("utf-8", errors="replace"))
-            if not self.pin or not secrets.compare_digest(form.get("pin", [""])[0].encode(), self.pin.encode()):
+            received_pin = form.get("pin", [""])[0].strip()
+            valid_pins = {self.pin.strip()} if self.pin else set()
+            cfg_allowed = getattr(self, "companion", None) and getattr(self.companion, "config", None) and self.companion.config.get("allowed_pins", [])
+            if cfg_allowed and isinstance(cfg_allowed, list):
+                for p in cfg_allowed:
+                    if p:
+                        valid_pins.add(str(p).strip())
+            pin_matches = any(secrets.compare_digest(received_pin.encode("utf-8"), vp.encode("utf-8")) for vp in valid_pins if vp)
+            if not pin_matches:
                 with SESSIONS_LOCK:
                     if len(LOGIN_FAILURES) > 2048:
                         LOGIN_FAILURES.clear()
@@ -675,7 +698,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    if os.name != "nt":
+    single_instance_mutex = None
+    if os.name == "nt":
+        # Ensure single-instance using a Named Mutex on Windows
+        single_instance_mutex = ctypes.windll.kernel32.CreateMutexW(None, True, r"Global\PCPhoneRemoteAppPySingleInstanceMutex")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            print("Another instance of PC Phone Remote is already running. Exiting.")
+            return 0
+    else:
         print("This app is intended for Windows commands.", file=sys.stderr)
 
     args = parse_args()

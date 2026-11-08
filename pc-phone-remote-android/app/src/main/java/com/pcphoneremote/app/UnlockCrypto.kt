@@ -698,15 +698,42 @@ object UnlockCrypto {
                 targets.add(cleanedHost)
                 val parts = cleanedHost.split(".")
                 if (parts.size == 4) {
-                    targets.add("${parts[0]}.${parts[1]}.${parts[2]}.255")
+                    try {
+                        val p0 = parts[0]
+                        val p1 = parts[1]
+                        val p2 = parts[2].toInt()
+                        targets.add("$p0.$p1.$p2.255")
+                        targets.add("$p0.$p1.${p2 or 1}.255")
+                        targets.add("$p0.$p1.255.255")
+                    } catch (_: Exception) {}
                 }
             }
-            for (addr in targets) {
-                try {
-                    val inet = InetAddress.getByName(addr)
-                    socket.send(DatagramPacket(packet, packet.size, inet, 9))
-                    socket.send(DatagramPacket(packet, packet.size, inet, 7))
-                } catch (_: Exception) {
+            try {
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val networkInterface = interfaces.nextElement()
+                    if (networkInterface.isLoopback || !networkInterface.isUp) continue
+                    for (interfaceAddress in networkInterface.interfaceAddresses) {
+                        val bcast = interfaceAddress.broadcast
+                        if (bcast != null) {
+                            targets.add(bcast.hostAddress)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val ports = intArrayOf(9, 7, 8765)
+            for (burst in 0 until 3) {
+                for (addr in targets) {
+                    try {
+                        val inet = InetAddress.getByName(addr)
+                        for (port in ports) {
+                            socket.send(DatagramPacket(packet, packet.size, inet, port))
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (burst < 2) {
+                    try { Thread.sleep(25) } catch (_: Exception) {}
                 }
             }
         }

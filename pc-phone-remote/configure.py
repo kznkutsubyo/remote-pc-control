@@ -367,6 +367,24 @@ def main() -> None:
     conn_tab = ttk.Frame(notebook, style="Card.TFrame", padding=18)
     notebook.add(conn_tab, text="  Подключение и RDP  ")
 
+    from autostart import is_enabled as autostart_is_enabled, enable as autostart_enable, disable as autostart_disable
+
+    def toggle_autostart() -> None:
+        if autostart_is_enabled():
+            autostart_disable()
+            messagebox.showinfo("Автозагрузка", "Автозагрузка Windows отключена.")
+        else:
+            autostart_enable()
+            messagebox.showinfo("Автозагрузка", "Автозагрузка успешно включена! PC Phone Remote будет запускаться в фоновом режиме при входе в Windows.")
+        update_autostart_btn()
+
+    autostart_btn_text = tk.StringVar()
+    def update_autostart_btn() -> None:
+        autostart_btn_text.set("🟢 Автозапуск при старте Windows: ВКЛЮЧЁН (нажмите, чтобы выключить)" if autostart_is_enabled() else "⚪ Автозапуск при старте Windows: ВЫКЛЮЧЕН (нажмите, чтобы включить)")
+
+    update_autostart_btn()
+    ttk.Button(conn_tab, textvariable=autostart_btn_text, style="Secondary.TButton", command=toggle_autostart).pack(fill="x", pady=(0, 10))
+
     ttk.Label(
         conn_tab,
         text="Адрес сервера: " + preferred_host(8765) + "   |   MAC (WoL): " + (primary_mac_address() or "—"),
@@ -374,13 +392,19 @@ def main() -> None:
         font=("Segoe UI", 10, "bold"),
     ).pack(anchor="w")
 
+    ttk.Label(conn_tab, text="PIN-код подключения сервера к ПК (укажите в профиле на телефоне):", style="Card.TLabel", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 3))
+    pin_entry = ttk.Entry(conn_tab, font=("Segoe UI", 11, "bold"))
+    pin_entry.insert(0, str(config.get("pin", "")))
+    pin_entry.pack(fill="x")
+
     def copy_setup() -> None:
         window.clipboard_clear()
-        window.clipboard_append(setup_uri(str(config.get("pin", "")), 8765))
-        messagebox.showinfo("Подключение", "Код подключения скопирован. На телефоне: Настройки → Импорт кода.")
+        curr_pin = pin_entry.get().strip() or str(config.get("pin", ""))
+        window.clipboard_append(setup_uri(curr_pin, 8765))
+        messagebox.showinfo("Подключение", f"Код подключения скопирован (PIN: {curr_pin}). На телефоне: Настройки → Импорт кода.")
 
-    ttk.Button(conn_tab, text="Скопировать базовый код подключения телефона", style="Accent.TButton", command=copy_setup).pack(
-        fill="x", pady=12
+    ttk.Button(conn_tab, text="Скопировать базовый код подключения телефона (с PIN)", style="Accent.TButton", command=copy_setup).pack(
+        fill="x", pady=10
     )
 
     fields: dict[str, ttk.Entry] = {}
@@ -405,6 +429,9 @@ def main() -> None:
             if not 1 <= values["port"] <= 65535 or "/" in values["host"]:
                 raise ValueError()
             latest = load_config()
+            new_pin = pin_entry.get().strip()
+            if new_pin:
+                latest["pin"] = new_pin
             latest["rdp"] = values
             latest["mac"] = primary_mac_address()
             temp = ROOT / "config.json.tmp"
