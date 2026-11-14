@@ -152,6 +152,8 @@ powershell -NoProfile -File tools\package_release.ps1 -Version 2.3.0
 
 The tag workflow checks server tests, native Windows tests, Android release, Linux installer syntax, relay startup and an unsigned iOS simulator build. It then publishes Release downloads and the GHCR package. These checks do not replace physical-device and desktop-session testing.
 
+Publishing CI requires the repository secret ANDROID_DEBUG_KEYSTORE_BASE64: the Base64-encoded development keystore matching previous APKs. This preserves Android update compatibility. Never commit the keystore. Fork maintainers should configure their own signing identity; changing the key prevents an in-place update from another publisher's APK.
+
 ## Project Layout
 
 | Directory | Contents |
