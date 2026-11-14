@@ -1,5 +1,7 @@
 # PC Phone Remote
 
+Version 2.3.0 adds Windows/Linux installers, the local desktop center at `/desktop`, LAN discovery, QR setup and the mobile browser UI at `/app`. See the [repository README](../README.md) for current installation and platform limits. The Windows launcher requires Python; Linux desktop integrations depend on OS utilities and permissions.
+
 Windows companion server for PC Phone Remote 2.0: power and media controls, PC status, shared files/text and RDP connection settings. Use the Android app or the local web remote.
 
 ## Start

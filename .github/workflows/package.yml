@@ -1,16 +1,35 @@
-name: Publish Relay Package
+name: Build & Publish Release
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: read
-  packages: write
+env:
+  RELEASE_VERSION: '2.3.0'
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
+      - name: Check release version
+        if: github.event_name == 'push'
+        run: test "$GITHUB_REF_NAME" = "v$RELEASE_VERSION"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: relay-smoke:local
+      - name: Check relay container imports and startup
+        run: |
+          docker run --rm --entrypoint python relay-smoke:local -c "import relay_server; assert relay_server.ACTIONS"
+          docker run -d --name relay-test -e RELAY_PIN=ci-test-only -e RELAY_AGENT_TOKEN=ci-agent-token-for-container-test relay-smoke:local
+          sleep 2
+          docker exec relay-test python -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8080/health').read() == b'ok'"
+          docker rm -f relay-test
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -21,7 +40,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}-relay
           tags: |
-            type=semver,pattern={{version}}
+            type=raw,value=${{ env.RELEASE_VERSION }}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
@@ -29,3 +48,101 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install qrcode pillow psutil
+      - run: python -m unittest discover -s pc-phone-remote/tests -v
+        env:
+          PYTHONPATH: pc-phone-remote
+      - run: python tools/build_installers.py --linux-only
+      - name: Check installer shell syntax
+        run: |
+          awk '/^__ARCHIVE_BELOW__$/{exit} {print}' release-dist/PCPhoneRemote-Linux-Installer.run > /tmp/installer-header.sh
+          bash -n /tmp/installer-header.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: release-dist/PCPhoneRemote-Linux-Installer.run
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r pc-phone-remote/requirements.txt
+      - run: python -m unittest discover -s pc-phone-remote/tests -v
+        env:
+          PYTHONPATH: pc-phone-remote
+      - run: ./windows-unlock/build.ps1 -RunTests
+      - run: ./tools/package_release.ps1 -Version $env:RELEASE_VERSION
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-and-source
+          path: |
+            release-dist/PCPhoneRemote-Setup.exe
+            release-dist/PCPhoneRemote-*-v${{ env.RELEASE_VERSION }}.zip
+          if-no-files-found: error
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build Android release APK
+        working-directory: pc-phone-remote-android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p ../release-dist
+          cp app/build/outputs/apk/release/app-release.apk "../release-dist/PCPhoneRemote-v$RELEASE_VERSION.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: release-dist/*.apk
+          if-no-files-found: error
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Build unsigned iOS simulator app
+        working-directory: pc-phone-remote-ios
+        run: |
+          xcodegen generate
+          xcodebuild -project PCPhoneRemote.xcodeproj -scheme PCPhoneRemote -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+
+  github-release:
+    needs: [publish, build-linux, build-windows, build-android, build-ios]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate SHA256SUMS.txt
+        working-directory: artifacts
+        run: sha256sum *.exe *.run *.apk *.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: PC Phone Remote ${{ env.RELEASE_VERSION }}
+          body_path: RELEASE_NOTES.md
+          files: artifacts/*
+          fail_on_unmatched_files: true

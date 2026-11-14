@@ -625,7 +625,7 @@ object UnlockCrypto {
 
     /**
      * Prompts the user with hardware BiometricPrompt (API 28+) if enrolled on the phone,
-     * or invokes `onVerified()` immediately if biometrics are not configured on the handset.
+     * Cancels if biometric verification is unavailable; manual password mode remains available.
      */
     fun confirmUserPresence(
         activity: Activity,
@@ -636,9 +636,21 @@ object UnlockCrypto {
         onCancelled: (String) -> Unit
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            onVerified()
+            onCancelled(Translations.tr(activity, "biometricUnavailable"))
             return
         }
+        confirmUserPresenceApi28(activity, title, subtitle, cancelLabel, onVerified, onCancelled)
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+    private fun confirmUserPresenceApi28(
+        activity: Activity,
+        title: String,
+        subtitle: String,
+        cancelLabel: String,
+        onVerified: () -> Unit,
+        onCancelled: (String) -> Unit
+    ) {
         try {
             val cancelSignal = CancellationSignal()
             val prompt = BiometricPrompt.Builder(activity)
@@ -658,19 +670,12 @@ object UnlockCrypto {
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                        // If handset has no biometrics enrolled (BIOMETRIC_ERROR_NO_BIOMETRICS = 11,
-                        // BIOMETRIC_ERROR_HW_NOT_PRESENT = 12, BIOMETRIC_ERROR_HW_UNAVAILABLE = 1),
-                        // allow proceeding so devices/emulators without fingerprint sensor still work.
-                        if (errorCode == 11 || errorCode == 12 || errorCode == 1 || errorCode == 14) {
-                            onVerified()
-                        } else {
-                            onCancelled(errString?.toString() ?: cancelLabel)
-                        }
+                        onCancelled(errString?.toString() ?: cancelLabel)
                     }
                 }
             )
         } catch (_: Exception) {
-            onVerified()
+            onCancelled(Translations.tr(activity, "biometricUnavailable"))
         }
     }
 
@@ -716,7 +721,7 @@ object UnlockCrypto {
                     for (interfaceAddress in networkInterface.interfaceAddresses) {
                         val bcast = interfaceAddress.broadcast
                         if (bcast != null) {
-                            targets.add(bcast.hostAddress)
+                            bcast.hostAddress?.let(targets::add)
                         }
                     }
                 }
@@ -737,5 +742,131 @@ object UnlockCrypto {
                 }
             }
         }
+    }
+
+    data class DiscoveredPc(
+        val name: String,
+        val host: String,
+        val port: Int,
+        val mac: String,
+        val os: String
+    )
+
+    fun discoverLocalPcs(timeoutMs: Int = 1800): List<DiscoveredPc> {
+        val found = java.util.concurrent.ConcurrentHashMap<String, DiscoveredPc>()
+        val localIps = LinkedHashSet<String>()
+        val broadcastTargets = LinkedHashSet<String>()
+        broadcastTargets.add("255.255.255.255")
+
+        try {
+            val ifaces = java.net.NetworkInterface.getNetworkInterfaces()
+            if (ifaces != null) {
+                for (iface in java.util.Collections.list(ifaces)) {
+                    if (!iface.isUp || iface.isLoopback) continue
+                    for (ifaceAddr in iface.interfaceAddresses) {
+                        val addr = ifaceAddr.address
+                        if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                            addr.hostAddress?.let { localIps.add(it) }
+                        }
+                        ifaceAddr.broadcast?.hostAddress?.let { broadcastTargets.add(it) }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 1. Fast UDP broadcast discovery on port 8766
+        val probe = "PCPHONE_DISCOVER".toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+        try {
+            java.net.DatagramSocket().use { socket ->
+                socket.broadcast = true
+                socket.soTimeout = 350
+                for (attempt in 0 until 2) {
+                    for (target in broadcastTargets) {
+                        try {
+                            val inet = InetAddress.getByName(target)
+                            socket.send(DatagramPacket(probe, probe.size, inet, 8766))
+                        } catch (_: Exception) {}
+                    }
+                    if (attempt == 0) {
+                        try { Thread.sleep(40) } catch (_: Exception) {}
+                    }
+                }
+                val deadline = System.currentTimeMillis() + (timeoutMs.coerceAtLeast(600) * 0.6).toLong()
+                val buf = ByteArray(4096)
+                while (System.currentTimeMillis() < deadline) {
+                    try {
+                        val pkt = DatagramPacket(buf, buf.size)
+                        socket.receive(pkt)
+                        val text = String(pkt.data, pkt.offset, pkt.length, java.nio.charset.StandardCharsets.UTF_8).trim()
+                        val json = org.json.JSONObject(text)
+                        if (json.optString("service") == "pc-phone-remote" || json.optBoolean("ok", false)) {
+                            val host = json.optString("host").trim().ifEmpty { pkt.address?.hostAddress ?: "" }
+                            val port = json.optInt("port", 8765).coerceIn(1, 65535)
+                            val name = json.optString("name").trim().ifEmpty { host }
+                            val mac = json.optString("mac").trim()
+                            val os = json.optString("os", "windows").trim()
+                            if (host.isNotBlank() && host != "127.0.0.1") {
+                                found["$host:$port"] = DiscoveredPc(name, host, port, mac, os)
+                            }
+                        }
+                    } catch (_: java.net.SocketTimeoutException) {
+                        if (found.isNotEmpty()) break
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Fallback parallel HTTP /api/discover sweep if UDP broadcast was blocked by router/firewall
+        if (found.isEmpty() && localIps.isNotEmpty()) {
+            val candidates = LinkedHashSet<String>()
+            for (ip in localIps) {
+                if (ip.startsWith("10.0.2.")) {
+                    candidates.add("10.0.2.2")
+                }
+                val parts = ip.split(".")
+                if (parts.size == 4) {
+                    val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
+                    for (last in 1..254) {
+                        val candidate = "$prefix.$last"
+                        if (candidate != ip) candidates.add(candidate)
+                    }
+                }
+            }
+            if (candidates.isNotEmpty()) {
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(32)
+                try {
+                    for (candidateIp in candidates) {
+                        pool.submit {
+                            try {
+                                val conn = java.net.URL("http://$candidateIp:8765/api/discover")
+                                    .openConnection() as java.net.HttpURLConnection
+                                conn.requestMethod = "GET"
+                                conn.connectTimeout = 250
+                                conn.readTimeout = 300
+                                if (conn.responseCode in 200..299) {
+                                    val body = conn.inputStream.bufferedReader(java.nio.charset.StandardCharsets.UTF_8).use { it.readText() }
+                                    val json = org.json.JSONObject(body)
+                                    if (json.optBoolean("ok", false)) {
+                                        val host = json.optString("host").trim().ifEmpty { candidateIp }
+                                        val port = json.optInt("port", 8765).coerceIn(1, 65535)
+                                        val name = json.optString("name").trim().ifEmpty { host }
+                                        val mac = json.optString("mac").trim()
+                                        val os = json.optString("os", "windows").trim()
+                                        found["$host:$port"] = DiscoveredPc(name, host, port, mac, os)
+                                    }
+                                }
+                                conn.disconnect()
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    pool.shutdown()
+                    pool.awaitTermination(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (_: Exception) {
+                    pool.shutdownNow()
+                }
+            }
+        }
+
+        return found.values.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
     }
 }

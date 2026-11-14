@@ -58,17 +58,24 @@ def open_pairing() -> None:
 
 
 def open_shared_folder() -> None:
-    os.startfile(str(Companion(load_config()).root))
+    target = str(Companion(load_config()).root)
+    if os.name == "nt":
+        os.startfile(target)
+    else:
+        subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def create_icon() -> Image.Image:
-    image = Image.new("RGBA", (64, 64), (18, 18, 30, 255))
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((10, 12, 54, 48), radius=8, fill=(161, 105, 255, 255))
-    draw.rectangle((25, 50, 39, 54), fill=(161, 105, 255, 255))
-    draw.rectangle((19, 55, 45, 58), fill=(161, 105, 255, 255))
-    draw.ellipse((43, 8, 56, 21), fill=(75, 224, 163, 255))
-    return image
+def create_icon(status_color: str = "online") -> Image.Image:
+    try:
+        from brand_icon import create_brand_image
+        return create_brand_image(64, status_color=status_color)
+    except Exception:
+        image = Image.new("RGBA", (64, 64), (13, 14, 24, 255))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((10, 12, 54, 48), radius=8, fill=(139, 124, 255, 255))
+        draw.rectangle((25, 50, 39, 54), fill=(56, 189, 248, 255))
+        draw.ellipse((43, 8, 56, 21), fill=(61, 214, 140, 255))
+        return image
 
 
 def quit_app(icon: pystray.Icon, item: pystray.MenuItem) -> None:

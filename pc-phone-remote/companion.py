@@ -21,6 +21,17 @@ try:
 except ImportError:
     psutil = None
 
+from linux_support import (
+    linux_handle_touchpad,
+    linux_open_folder,
+    linux_run_deck_macro,
+    linux_run_scene,
+    linux_schedule_shutdown,
+    linux_send_media,
+    linux_session_locked,
+    linux_unlock_session,
+    linux_unlock_status,
+)
 from unlock_ipc import DEFAULT_CONTROL_PIPE, pipe_transact
 
 APP_DIR = Path(__file__).resolve().parent
@@ -42,6 +53,7 @@ ACTIONS = {
     "unlock.enroll",
     "unlock.challenge",
     "unlock.submit",
+    "unlock.linux",
     "touchpad",
     "scenes.run",
     "deck.run",
@@ -274,6 +286,8 @@ class Companion:
 
     def unlock_status_snapshot(self, auto_start: bool = False) -> dict:
         resp = pipe_transact({"op": "unlock.status"}, pipe_name=self.unlock_pipe, timeout_ms=1500, auto_start=auto_start)
+        if isinstance(resp, dict) and resp.get("error") == "windows_only" and os.name != "nt":
+            return linux_unlock_status()
         if not isinstance(resp, dict) or not resp.get("ok"):
             return {
                 "available": False,
@@ -363,8 +377,6 @@ class Companion:
                 "downloads_dir": str(dl) if dl else str(self.root),
             }
         if action == "files.open_folder":
-            if os.name != "nt":
-                raise FeatureError("Opening folder requires Windows", 501)
             dl = self._downloads_mirror_dir()
             if dl is not None:
                 for p in self.root.iterdir():
@@ -376,6 +388,8 @@ class Companion:
                             except OSError:
                                 pass
             open_target = str(dl if dl is not None else self.root)
+            if os.name != "nt":
+                return linux_open_folder(Path(open_target))
             run_on_input_desktop(lambda: subprocess.Popen(["explorer.exe", open_target]))
             return {"opened": True, "path": open_target}
         if action == "files.get":
@@ -407,10 +421,13 @@ class Companion:
             key = payload.get("key")
             if not isinstance(key, str) or key not in keys:
                 raise FeatureError("Unknown media key")
-            if os.name != "nt":
-                raise FeatureError("Media controls require Windows", 501)
             if self.session_locked() is True:
-                raise FeatureError("Media controls require an unlocked Windows session", 409)
+                raise FeatureError("Media controls require an unlocked session", 409)
+            if os.name != "nt":
+                try:
+                    return linux_send_media(key)
+                except Exception as exc:
+                    raise FeatureError(str(exc), 501) from None
             audio_state = None
             if key in {"mute", "volume_down", "volume_up"}:
                 audio_state = control_windows_audio(key)
@@ -426,13 +443,17 @@ class Companion:
                 res.update(audio_state)
             return res
         if action in {"timer.set", "timer.cancel"}:
-            if os.name != "nt":
-                raise FeatureError("Power timer requires Windows", 501)
-            args = ["shutdown.exe", "/a"]
+            minutes = payload.get("minutes") if action == "timer.set" else None
             if action == "timer.set":
-                minutes = payload.get("minutes")
                 if type(minutes) is not int or not 1 <= minutes <= 180:
                     raise FeatureError("Choose 1 to 180 minutes")
+            if os.name != "nt":
+                try:
+                    return linux_schedule_shutdown(minutes)
+                except RuntimeError as exc:
+                    raise FeatureError(str(exc), 409) from None
+            args = ["shutdown.exe", "/a"]
+            if action == "timer.set":
                 # /t > 0 implies /f in Windows: the client explicitly confirms data loss.
                 args = ["shutdown.exe", "/s", "/t", str(minutes * 60)]
             result = subprocess.run(args, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -485,6 +506,14 @@ class Companion:
             }
             return self._call_unlock_service(req)
 
+        if action == "unlock.linux":
+            if os.name == "nt":
+                raise FeatureError("unlock.linux is only for Linux hosts", 400)
+            ok, msg = linux_unlock_session()
+            if not ok:
+                raise FeatureError(msg, 409)
+            return {"ok": True, "unlocked": True, "message": msg}
+
         # ------------------------------------------------ Commercial / Pro Features
         if action == "touchpad":
             return self._handle_touchpad(payload)
@@ -521,10 +550,15 @@ class Companion:
         raise FeatureError("Unsupported action")
 
     def _handle_touchpad(self, payload: dict) -> dict:
-        if os.name != "nt":
-            raise FeatureError("Touchpad requires Windows", 501)
         if self.session_locked() is True:
-            raise FeatureError("Touchpad requires an unlocked Windows session", 409)
+            raise FeatureError("Touchpad requires an unlocked session", 409)
+        if os.name != "nt":
+            try:
+                return linux_handle_touchpad(payload)
+            except ValueError as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
         kind = payload.get("type") or payload.get("mode")
         if kind == "move":
             dx = max(-400, min(400, int(payload.get("dx", 0))))
@@ -584,6 +618,13 @@ class Companion:
         scene = payload.get("scene")
         if scene not in {"movie", "night", "away", "work", "presentation"}:
             raise FeatureError("Unknown scene", 400)
+        if os.name != "nt":
+            if self.session_locked() is True and scene != "away":
+                raise FeatureError("Scene requires an unlocked session", 409)
+            try:
+                return linux_run_scene(scene, self.command_runner)
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
         if scene == "away":
             if self.command_runner:
                 self.command_runner("lock")
@@ -616,8 +657,13 @@ class Companion:
         if macro == "lock" and self.command_runner:
             self.command_runner("lock")
             return {"sent": True, "macro": macro}
-        if os.name != "nt" or self.session_locked() is True:
-            raise FeatureError("Macro requires an unlocked Windows session", 409)
+        if self.session_locked() is True:
+            raise FeatureError("Macro requires an unlocked session", 409)
+        if os.name != "nt":
+            try:
+                return linux_run_deck_macro(macro, self.root, self._downloads_mirror_dir(), self.command_runner)
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
         if macro == "mute":
             if control_windows_audio("mute") is None:
                 def _mute_vk() -> None:
@@ -678,7 +724,7 @@ class Companion:
     @staticmethod
     def session_locked():
         if os.name != "nt":
-            return None
+            return linux_session_locked()
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         user32.OpenInputDesktop.restype = ctypes.c_void_p
         user32.SwitchDesktop.argtypes = [ctypes.c_void_p]
@@ -703,6 +749,7 @@ class Companion:
         dl = self._downloads_mirror_dir()
         result = {
             "hostname": socket.gethostname(),
+            "os": "windows" if os.name == "nt" else "linux",
             "api_version": 3,
             "locked": self.session_locked(),
             "max_file_bytes": MAX_FILE,
@@ -715,10 +762,12 @@ class Companion:
         }
         result["rdp"]["port"] = self.config.get("rdp", {}).get("port", 3389)
         if psutil:
+            du = shutil.disk_usage(self.root)
             result.update(
                 cpu=psutil.cpu_percent(interval=0.15),
                 ram=psutil.virtual_memory().percent,
-                disk_free=shutil.disk_usage(self.root).free,
+                disk_free=du.free,
+                disk=round((du.used / du.total) * 100.0, 1) if du.total else 0.0,
                 uptime=int(time.time() - psutil.boot_time()),
             )
             battery = psutil.sensors_battery()

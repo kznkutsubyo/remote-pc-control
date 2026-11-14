@@ -1,0 +1,25 @@
+name: PCPhoneRemote
+options:
+  bundleIdPrefix: com.pcphoneremote
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.pcphoneremote.ios
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "2.3.0"
+    CURRENT_PROJECT_VERSION: "2"
+targets:
+  PCPhoneRemote:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Info.plist
+    settings:
+      base:
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic

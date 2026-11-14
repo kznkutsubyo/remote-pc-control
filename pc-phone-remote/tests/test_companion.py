@@ -234,6 +234,134 @@ class HttpTests(unittest.TestCase):
         self.assertIsNone(broker.poll(timeout=0.01))
         self.assertEqual(broker.pending, {})
 
+    def test_pin_rotation_revokes_old_pin_aliases_and_sessions(self):
+        path = Path(self.temp.name) / "config.json"
+        self.server.config_path = path
+        path.write_text(json.dumps({"pin": "test-access", "allowed_pins": ["legacy-access"]}), "utf-8")
+        cookie = self.login()
+        status, _, _ = self.request("/api/local/admin", {"action": "save_config", "pin": "replacement-access", "share_dir": self.temp.name}, headers={"X-Local-Admin": app.LOCAL_ADMIN_TOKEN})
+        self.assertEqual(status, 200)
+        self.assertNotIn("allowed_pins", json.loads(path.read_text("utf-8")))
+        for pin in ("test-access", "legacy-access"):
+            self.assertEqual(self.request("/login", "pin=" + pin)[0], 403)
+        self.assertEqual(self.request("/login", "pin=replacement-access")[0], 303)
+        self.assertEqual(self.request("/api/v2", {"action": "files.list"}, cookie)[0], 401)
+
+    def test_config_pin_reload_replaces_runtime_pin(self):
+        path = Path(self.temp.name) / "config.json"
+        self.server.config_path = path
+        path.write_text(json.dumps({"pin": "file-access", "allowed_pins": ["legacy-access"]}), "utf-8")
+        self.assertEqual(self.request("/login", "pin=test-access")[0], 403)
+        self.assertEqual(self.request("/login", "pin=legacy-access")[0], 403)
+        self.assertEqual(self.request("/login", "pin=file-access")[0], 303)
+
+    def test_discover_and_ios_pwa_routes(self):
+        status, _, body = self.request("/api/discover")
+        self.assertEqual(status, 200)
+        payload = json.loads(body.decode("utf-8"))
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["service"], "pc-phone-remote")
+
+        cookie = self.login()
+        status, _, app_html = self.request("/app", cookie=cookie)
+        self.assertEqual(status, 200)
+        self.assertIn(b"apple-mobile-web-app-capable", app_html)
+        self.assertIn(b"appShell", app_html)
+
+        status, _, manifest = self.request("/manifest.json")
+        self.assertEqual(status, 200)
+        manifest_obj = json.loads(manifest.decode("utf-8"))
+        self.assertEqual(manifest_obj["start_url"], "/app")
+
+        status, _, sw_js = self.request("/sw.js")
+        self.assertEqual(status, 200)
+        self.assertIn(b"self.addEventListener", sw_js)
+
+        status, _, icon_png = self.request("/apple-touch-icon.png")
+        self.assertEqual(status, 200)
+        self.assertTrue(icon_png.startswith(b"\x89PNG"))
+
+    def test_desktop_ui_qr_and_local_admin_api(self):
+        self.server.config_path = Path(self.temp.name) / "config.json"
+
+        status, _, desk_html = self.request("/desktop")
+        self.assertEqual(status, 200)
+        self.assertIn(b"PC Phone Remote", desk_html)
+        self.assertIn(app.LOCAL_ADMIN_TOKEN.encode("utf-8"), desk_html)
+
+        status, hdrs, qr_png = self.request("/api/local/qr?data=pcphone://add?host=127.0.0.1")
+        self.assertEqual(status, 200)
+        self.assertEqual(hdrs.get("Content-Type"), "image/png")
+        self.assertTrue(qr_png.startswith(b"\x89PNG"))
+
+        status, _, admin_raw = self.request("/api/local/admin")
+        self.assertEqual(status, 200)
+        admin_data = json.loads(admin_raw.decode("utf-8"))
+        self.assertTrue(admin_data["ok"])
+        self.assertEqual(admin_data["pin"], "test-access")
+        self.assertIsInstance(admin_data["ips"], list)
+        self.assertIn("telemetry", admin_data)
+
+        # POST without X-Local-Admin token must fail with 403
+        status, _, _ = self.request("/api/local/admin", {"action": "save_config", "pin": "111222"})
+        self.assertEqual(status, 403)
+
+        # Non-loopback Host header must fail with 403
+        status, _, _ = self.request("/desktop", headers={"Host": "evil.example:8765"})
+        self.assertEqual(status, 403)
+        status, _, _ = self.request("/api/local/admin", headers={"Host": "192.168.1.10:8765"})
+        self.assertEqual(status, 403)
+
+        # Valid POST with X-Local-Admin updates server.pin and temp config.json
+        status, _, save_resp = self.request(
+            "/api/local/admin",
+            {"action": "save_config", "pin": "987654", "share_dir": self.temp.name},
+            headers={"X-Local-Admin": app.LOCAL_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(save_resp.decode("utf-8"))["ok"])
+        self.assertEqual(self.server.pin, "987654")
+        saved_cfg = json.loads((Path(self.temp.name) / "config.json").read_text("utf-8"))
+        self.assertEqual(saved_cfg["pin"], "987654")
+
+
+class LinuxSupportTests(unittest.TestCase):
+    def test_linux_media_power_touchpad_and_timer_dispatch(self):
+        import linux_support
+
+        def fake_which(cmd):
+            available = {"playerctl", "xdotool", "pactl", "systemctl", "shutdown", "loginctl"}
+            return f"/usr/bin/{cmd}" if cmd in available else None
+
+        with (
+            patch("linux_support.shutil.which", side_effect=fake_which),
+            patch("linux_support.subprocess.run", return_value=Mock(returncode=0, stdout="", stderr="")) as run_mock,
+            patch("linux_support.subprocess.Popen"),
+        ):
+            self.assertEqual(linux_support.linux_send_media("play_pause"), {"sent": True})
+            run_mock.assert_any_call(
+                ["playerctl", "play-pause"],
+                capture_output=True,
+                text=True,
+                timeout=4.0,
+                check=False,
+            )
+
+            res = linux_support.linux_handle_touchpad({"type": "move", "dx": 12, "dy": -8})
+            self.assertEqual(res, {"sent": True})
+            run_mock.assert_any_call(
+                ["xdotool", "mousemove_relative", "--", "12", "-8"],
+                capture_output=True,
+                text=True,
+                timeout=4.0,
+                check=False,
+            )
+
+            self.assertEqual(linux_support.linux_schedule_shutdown(15), {"scheduled": True, "minutes": 15})
+            self.assertEqual(linux_support.linux_schedule_shutdown(None), {"scheduled": False, "minutes": None})
+            self.assertIsNone(linux_support.linux_run_power_command("lock"))
+            self.assertIsNone(linux_support.linux_run_power_command("sleep"))
+
 
 if __name__ == "__main__":
     unittest.main()

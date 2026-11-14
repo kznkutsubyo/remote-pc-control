@@ -1,5 +1,7 @@
 # PC Phone Remote Android
 
+Version 2.3.0 adds QR scanning (camera permission on request), `pcphone://` setup links, LAN discovery and onboarding. Server PIN rotation rejects previously accepted aliases. See the [current repository README](../README.md) for downloads and setup.
+
 Native Android remote for the v2 Windows server in `pc-phone-remote`, with an optional HTTPS relay.
 
 ## What it does

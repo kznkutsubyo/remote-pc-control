@@ -1,159 +1,168 @@
 # PC Phone Remote
 
-**Your Windows PC, within reach of your Android phone.**
+**Your computer, within reach of your phone.**
 
-A native Kotlin + Jetpack Compose remote for everyday PC control: power, media, touchpad, file transfer and device management. Connect directly on a reachable network or use your own HTTPS relay.
+A personal remote for Windows and Linux: power, media, touchpad, shared files and PC status. Version **2.3.0** adds a desktop control center, QR pairing, LAN discovery, installers, an iPhone browser interface and native SwiftUI sources.
 
-[Download 2.2](https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.2.0) · [Relay package](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay) · [Security](SECURITY.md) · [MIT License](LICENSE)
+[Download 2.3.0](https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.3.0) · [Relay package](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay) · [Security](SECURITY.md) · [MIT License](LICENSE)
 
 ## Preview
 
-<p>
-  <img src="docs/screenshots/phone/remote-dark.png" width="250" alt="Android remote dashboard in dark mode">
-  <img src="docs/screenshots/phone/studio-dark.png" width="250" alt="Studio touchpad, scenes and presentation controls">
-  <img src="docs/screenshots/phone/transfer-dark.png" width="250" alt="Phone file transfer and shared text">
-</p>
+<p><img src="docs/screenshots/phone/remote-dark.png" width="250" alt="Android remote"><img src="docs/screenshots/phone/studio-dark.png" width="250" alt="Studio touchpad"><img src="docs/screenshots/phone/transfer-dark.png" width="250" alt="File transfer"></p>
 
-Captured on a physical Android phone. Personal fields have been covered with opaque masks and the phone status bar removed; the remaining interface is unchanged. Screenshots illustrate the UI, not proof of a successful Windows unlock. See the [screenshot notes](docs/SCREENSHOTS.md).
+Real Android phone captures from an earlier 2.2 build. Personal fields have opaque masks and the phone status bar is removed. Screenshots illustrate the UI, not proof of Windows unlock.
 
-<details>
-<summary>Light theme, appearance settings and Wake-on-LAN</summary>
-<p>
-  <img src="docs/screenshots/phone/remote-light.png" width="250" alt="Remote dashboard in light mode">
-  <img src="docs/screenshots/phone/settings-dark.png" width="250" alt="Theme, colors and animation settings">
-  <img src="docs/screenshots/phone/studio-mac-masked.png" width="250" alt="Studio action deck and masked Wake-on-LAN address">
-</p>
+<details><summary>Light theme, appearance and Wake-on-LAN</summary>
+<p><img src="docs/screenshots/phone/remote-light.png" width="250" alt="Light remote"><img src="docs/screenshots/phone/settings-dark.png" width="250" alt="Appearance settings"><img src="docs/screenshots/phone/studio-mac-masked.png" width="250" alt="Wake-on-LAN"></p>
 </details>
 
-## What You Can Do
+## Platform Support
 
-| Area | Features |
-| --- | --- |
-| Remote | Lock, sleep, restart, shutdown, media playback, mute and volume |
-| PC status | CPU, memory, uptime and session status |
-| Studio | Touchpad, scenes, action deck, process list and Wake-on-LAN helper |
-| Transfer | Send and receive files; exchange text and links |
-| Devices | Save multiple computer profiles and import setup codes |
-| Appearance | Light/dark mode, color palettes, animations and language selection |
-| Remote access | Optional self-hosted relay for commands and shared data |
-| Windows sign-in | Optional native credential provider and service with encrypted phone enrollment |
+| Platform | Distribution | Notes |
+| --- | --- | --- |
+| Android | Kotlin / Compose APK | QR scanning, LAN discovery, saved PCs and onboarding |
+| Windows x64 | Setup EXE or portable ZIP | Python backend, desktop control center, optional native sign-in |
+| Linux | Self-extracting .run installer | Desktop-dependent integrations; X11 and Wayland differ |
+| iPhone / iPad browser | Safari at /app | Add to Home Screen; no IPA needed |
+| Native iOS | SwiftUI source ZIP | Requires macOS, Xcode and your signing team |
 
-Use the project only on computers you own or are authorized to administer.
+Linux desktop behavior depends on available utilities and system policies. Native iOS is distributed as source, not a signed IPA. Windows lock-screen integration remains optional and requires separate testing in a recoverable environment.
+
+## Features
+
+- **Remote:** lock, sleep, restart, shutdown, playback, mute and volume.
+- **Status:** CPU, memory, disk usage, uptime and session state.
+- **Studio:** touchpad, presentation keys, scenes, macros and process list.
+- **Wake-on-LAN:** send magic packets where hardware, firmware and network settings support them.
+- **Transfer:** upload/download files up to **8 MiB**, and text up to **64 KiB**.
+- **Devices:** multiple profiles, QR scanning, import codes and automatic LAN discovery.
+- **Desktop setup:** connection settings, QR codes, server PIN, shared-folder and startup controls.
+- **Appearance:** light/dark mode, palettes, language selection and animations.
+- **Remote access:** self-hosted HTTPS relay for native clients.
+- **Windows sign-in:** optional native credential provider and encrypted phone enrollment.
+
+Use only on computers you own or are authorized to administer.
 
 ## Downloads
 
-Get the files from [Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest):
+Get files from [Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest):
 
-| File | Contents |
+| File | Purpose |
 | --- | --- |
-| `PCPhoneRemote-v2.2.apk` | Android app for manual installation |
-| `PCPhoneRemote-Windows-v2.2.zip` | Python server, setup tools and optional Windows x64 sign-in components |
-| `PCPhoneRemote-Relay-v2.2.zip` | Relay source distribution |
-| `SHA256SUMS.txt` | SHA-256 checksums for the downloads |
+| PCPhoneRemote-v2.3.0.apk | Android app |
+| PCPhoneRemote-Setup.exe | Windows installer and launcher |
+| PCPhoneRemote-Linux-Installer.run | Linux installer |
+| PCPhoneRemote-Windows-v2.3.0.zip | Portable Windows sources and native x64 sign-in binaries |
+| PCPhoneRemote-Relay-v2.3.0.zip | Self-hosted relay sources |
+| PCPhoneRemote-iOS-Source-v2.3.0.zip | SwiftUI sources and instructions |
+| SHA256SUMS.txt | Download checksums |
 
-The APK uses a development signing key. It is not a Play Store production build. The Windows archive requires Python and installation of its dependencies.
+The APK uses a development signing key. Windows executables are unsigned. The Windows launcher wraps Python; Python is a prerequisite, not a bundled runtime.
 
-## Get Connected
+## Quick Start
 
-### On Your PC
+### Windows
 
-1. Extract the Windows archive.
-2. Open `pc-phone-remote` and run `install-deps.bat`.
-3. Start the server with `run.bat`.
-4. Open `configure.bat` to configure the connection and obtain the phone setup code.
+1. Install Python 3.10+ and run PCPhoneRemote-Setup.exe, or extract the Windows ZIP and run Install-PCPhoneRemote.bat.
+2. Complete setup, choose a server PIN and allow network access only where needed.
+3. Open PC Phone Remote. Its desktop control center is at http://127.0.0.1:8765/desktop.
+4. Scan its Android pairing QR or import the connection code on the phone.
 
-For a manual start:
+The control center and pairing endpoints are local-only. Native Windows sign-in is an optional installation, not a prerequisite for ordinary controls.
 
-```powershell
+Manual startup:
+
+~~~powershell
 cd pc-phone-remote
 python -m pip install -r requirements.txt
 $env:REMOTE_PIN = "<your-own-pin>"
 python app.py
-```
+~~~
 
-Without a PIN override, first launch generates a random PIN in local `config.json`. A pre-existing empty config PIN must be filled before use. Real connection details and credentials are not bundled with the source.
+Without a PIN override, first launch generates a random PIN in ignored local config.json. Changing the PIN in the desktop control center rejects old PINs and clears existing API/web sessions. Previously retained alias PINs are no longer supported.
 
-### On Your Phone
+### Linux
 
-1. Install the APK from Releases.
-2. Add a computer in Settings/devices, or import the setup code from the PC.
-3. Select the device, then refresh the remote to verify the connection.
-4. Open Studio or Transfer for the other controls.
+~~~bash
+chmod +x PCPhoneRemote-Linux-Installer.run
+./PCPhoneRemote-Linux-Installer.run
+~~~
 
-For direct mode, the phone must be able to reach the PC address. `127.0.0.1` on the phone points to the phone itself, not your computer.
+The installer uses a per-user directory and a Python virtual environment when available. Install desktop utilities such as playerctl, xdotool, wmctrl, pactl or ydotool as needed. Some power/session actions require polkit permission. Avoid running the backend as root to work around missing desktop permissions.
 
-## Files And Shared Text
+Linux uses existing desktop/logind facilities. It does not reproduce Windows password authentication or guarantee support for every screen locker.
 
-Transfers are limited to **8 MiB per file**. The server shares a dedicated folder rather than exposing the whole filesystem; uploads do not overwrite existing files. The shared text board supports up to **64 KiB**.
+### Android
 
-Use the Transfer screen for phone uploads/downloads. The PC also has an authenticated transfer page at `http://127.0.0.1:8765/share`. The application does not automatically execute received files or continuously monitor either clipboard.
+Install the APK, find the PC on the local network or scan/import its connection code, select it and refresh status. Use Remote, Studio Pro, Transfer and Settings for the other features.
 
-## Outside Your Home Network
+The PC address must be reachable. On a phone, 127.0.0.1 refers to the phone itself.
 
-The optional relay lets the PC maintain an outgoing connection to your server:
+### iPhone / iPad
 
-```text
-Android app → HTTPS relay → PC agent → Windows PC
-```
+Open http://<your-pc-address>:8765/app in Safari, sign in using the server PIN, then use **Share → Add to Home Screen**.
 
-Use a trusted relay host, HTTPS, a unique `RELAY_PIN` and a random `RELAY_AGENT_TOKEN` of at least 24 characters. Each relay instance serves one PC. Update the relay and PC agent together.
+Service-worker/full PWA behavior requires a secure browser context, normally HTTPS. LAN HTTP is a basic browser connection. The relay API does not serve /app; use a direct PC connection or an HTTPS proxy for the browser interface.
 
-The relay container is published in [GitHub Packages](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay):
+For native SwiftUI sources, see the [iOS guide](pc-phone-remote-ios/README.md). A simulator build is not a signed physical-device app.
 
-```text
-ghcr.io/kznkutsubyo/remote-pc-control-relay:2.2.0
-```
+## Files And Text
 
-Pass credentials as environment variables at deployment, not as values committed to the repository. Standard file/text transfers use transport encryption through HTTPS, not end-to-end encryption against the relay.
+Transfers use a dedicated shared folder on the PC. Uploads do not overwrite existing names. The backend can mirror received files to Downloads/PCPhoneRemote; inspect the active location in desktop settings.
 
-See [relay setup](pc-phone-remote/README_REMOTE.md) for deployment details.
+The authenticated page at http://127.0.0.1:8765/share also transfers files/text. Received files are not automatically executed and clipboards are not continuously monitored.
+
+## Outside Your Network
+
+~~~text
+Native phone client → HTTPS relay → outgoing PC agent → computer
+~~~
+
+Use a trusted HTTPS host, unique RELAY_PIN and random RELAY_AGENT_TOKEN of at least 24 characters. Update relay and agent together; one relay instance serves one PC.
+
+Container: **ghcr.io/kznkutsubyo/remote-pc-control-relay:2.3.0**.
+
+Configure credentials at deployment time. Regular files/text are buffered by the relay and are not end-to-end encrypted against it. Native Windows sign-in requests have their own encrypted protocol. See [relay setup](pc-phone-remote/README_REMOTE.md).
 
 ## Windows Sign-In
 
-Version 2.2 includes an **optional native Windows credential provider and service**. Phone enrollment and unlock requests use an encrypted, signed protocol. This is separate from the optional external RDP-client connection.
+The optional native credential provider and LocalSystem service support encrypted, signed phone requests for a Windows account. An external RDP-client connection is also available.
 
-**Validation status:** the native components build and pass automated self-tests. Actual Windows lock-screen sign-in has not been verified in a disposable Windows VM. Validate with a recoverable test environment before registering the credential provider on a primary PC. Automated tests are not a guarantee of successful desktop unlock.
+Native components pass automated self-tests. Actual Windows lock-screen sign-in has not been independently verified here in a disposable VM. Test with recovery available before registering the provider on a primary PC. A success message while already unlocked is not proof of lock-screen unlock.
 
-Read the [native component documentation](windows-unlock/README.md) and included install/uninstall scripts before enabling it.
+See the [native guide](windows-unlock/README.md) and installation/uninstallation scripts.
 
-## Autostart And Background Operation
+## Configuration And Startup
 
-The Windows server can start after user logon using Task Scheduler and `start-hidden.vbs`. This is logon startup, not a guarantee of availability before the first Windows sign-in after reboot.
+Local configs, credentials, enrollment material and logs are excluded from Git. CLI/environment PIN overrides take precedence over normal file-based operation.
 
-The optional tray launcher provides server controls and access to configuration and shared data. Optional scheduled command tasks support power actions while the session is locked. Media and touchpad actions require an interactive unlocked session.
+User autostart runs after OS logon, not before the first Windows sign-in after reboot. Media, touchpad and desktop actions depend on an interactive session. Windows shutdown timers may forcibly close apps: save your work first.
 
 ## Build And Verify
 
-```powershell
-# Server tests
+~~~powershell
 cd pc-phone-remote
 python -m unittest discover -s tests -v
-
-# Android release
 cd ..\pc-phone-remote-android
-.\gradlew.bat assembleRelease
-
-# Native Windows components (MSVC + Windows SDK required)
+.\gradlew.bat assembleRelease lintDebug
 cd ..
 powershell -NoProfile -ExecutionPolicy Bypass -File windows-unlock\build.ps1 -RunTests
-```
+powershell -NoProfile -File tools\package_release.ps1 -Version 2.3.0
+~~~
 
-Android release output: `pc-phone-remote-android/app/build/outputs/apk/release/app-release.apk`.
-
-Release 2.2 was built with 17 passing server tests and 10 passing native self-tests. These checks do not replace physical-device and Windows sign-in testing.
+The tag workflow checks server tests, native Windows tests, Android release, Linux installer syntax, relay startup and an unsigned iOS simulator build. It then publishes Release downloads and the GHCR package. These checks do not replace physical-device and desktop-session testing.
 
 ## Project Layout
 
-| Directory | Purpose |
+| Directory | Contents |
 | --- | --- |
-| `pc-phone-remote/` | Python server, relay, PC agent and desktop setup |
-| `pc-phone-remote-android/` | Native Kotlin/Compose Android app |
-| `windows-unlock/` | Optional native Windows provider and service |
-| `docs/` | Screenshots and contribution guides |
-| `tools/` | Build, packaging and development helpers |
-
-Local configs, secrets, logs and generated binaries are excluded from source control. Release binaries are distributed through Releases; the relay container is distributed through Packages.
+| pc-phone-remote/ | Backend, desktop/browser UI, relay and setup |
+| pc-phone-remote-android/ | Kotlin/Compose Android client |
+| pc-phone-remote-ios/ | SwiftUI sources |
+| windows-unlock/ | Optional native provider and service |
+| tools/ | Installer builds and packaging |
+| docs/ | Redacted screenshots and guides |
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Included Lucide icons retain their [license notice](pc-phone-remote-android/LUCIDE-LICENSE.txt).
+MIT. See [LICENSE](LICENSE). Lucide icons retain their [license notice](pc-phone-remote-android/LUCIDE-LICENSE.txt).

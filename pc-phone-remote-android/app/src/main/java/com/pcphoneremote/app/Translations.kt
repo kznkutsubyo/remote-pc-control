@@ -3,6 +3,11 @@ package com.pcphoneremote.app
 import android.content.Context
 
 object Translations {
+    private val biometricUnavailable = mapOf(
+        "en" to "Biometric verification is unavailable. Use Windows password mode or set up biometrics on this phone.",
+        "ru" to "Биометрия недоступна. Выбери вход по паролю Windows или настрой биометрию на телефоне.",
+        "uk" to "Біометрія недоступна. Обери вхід за паролем Windows або налаштуй біометрію на телефоні."
+    )
     val LANG_CODES = arrayOf("en", "ru", "uk", "sk", "cs", "ja", "de", "es", "fr", "pl")
     val LANG_NAMES = arrayOf(
         "English",
@@ -241,7 +246,33 @@ object Translations {
         "unitMinShort" to "m",
         "unitMb" to "MB",
         "unitKb" to "KB",
-        "unitByte" to "B"
+        "unitByte" to "B",
+        "scanNetworkBtn" to "Auto-Find PC on Wi-Fi",
+        "scanningNetwork" to "Scanning local Wi-Fi network...",
+        "scanFoundPrefix" to "Found PCs on LAN: ",
+        "scanNoneFound" to "No PC responded. Ensure both devices are on the same Wi-Fi and port 8765/8766 is open.",
+        "scanPickTitle" to "Select PC on Wi-Fi",
+        "tourTitle" to "Quick Start Guide",
+        "tourStep1Title" to "1. One-Tap PC Connection",
+        "tourStep1Body" to "Run the installer on Windows or Linux, then tap 'Auto-Find PC on Wi-Fi' or scan the QR code — no manual IP typing needed.",
+        "tourStep2Title" to "2. Unified Security PIN",
+        "tourStep2Body" to "The same 4–8 digit PIN connects your phone and unlocks the Windows or Linux sign-in screen.",
+        "tourStep3Title" to "3. Trackpad, Media & Wake-on-LAN",
+        "tourStep3Body" to "Use the Remote tab for power, sleep, lock & timers, and Studio Pro for touchpad mouse, hotkeys, and sound control.",
+        "tourStep4Title" to "4. Linux, Files & Phone Unlock",
+        "tourStep4Body" to "Send files between phone and PC, sync clipboard notes, and enroll phone biometrics for instant lock-screen sign-in.",
+        "tourNext" to "Next",
+        "tourPrev" to "Back",
+        "tourDone" to "Get Started",
+        "replayTourBtn" to "Show Onboarding & Hints",
+        "tipRemote" to "Tip: Tap Unlock to sign in from the lock screen, Wake PC to power on over LAN, or control system media.",
+        "tipStudio" to "Tip: Drag inside the Touchpad area to move the cursor, tap for left-click, or press hotkeys below.",
+        "tipTransfer" to "Tip: Pick any file to upload straight to PC Shared Folder, or sync text/links via Live Clipboard.",
+        "tipSettings" to "Tip: Tap 'Auto-Find PC on Wi-Fi' or 'Scan QR / Paste Code' to link a Windows or Linux PC in seconds.",
+        "linuxSignInCta" to "Unlock Linux Session",
+        "scanQrCameraBtn" to "Scan QR Code on PC",
+        "scanQrCameraPrompt" to "Point camera at the QR code in PC Phone Remote",
+        "qrConnectedSuccess" to "PC added via QR code!"
     )
 
     private val RU = mapOf(
@@ -468,7 +499,33 @@ object Translations {
         "unitMinShort" to "м",
         "unitMb" to "МБ",
         "unitKb" to "КБ",
-        "unitByte" to "Б"
+        "unitByte" to "Б",
+        "scanNetworkBtn" to "Найти ПК в Wi-Fi",
+        "scanningNetwork" to "Сканирую локальную сеть Wi-Fi...",
+        "scanFoundPrefix" to "Найдено ПК в сети: ",
+        "scanNoneFound" to "ПК не найден. Проверьте, что телефон и ПК в одной сети Wi-Fi и открыты порты 8765/8766.",
+        "scanPickTitle" to "Выберите ПК в сети",
+        "tourTitle" to "Быстрый старт",
+        "tourStep1Title" to "1. Быстрое подключение к ПК",
+        "tourStep1Body" to "Запустите установщик на Windows или Linux, затем нажмите «Найти ПК в Wi-Fi» или отсканируйте QR-код — вводить IP вручную не нужно.",
+        "tourStep2Title" to "2. Единый PIN-код",
+        "tourStep2Body" to "Один и тот же PIN-код используется и для подключения к серверу, и для разблокировки экрана входа Windows или Linux.",
+        "tourStep3Title" to "3. Тачпад, медиа и Wake-on-LAN",
+        "tourStep3Body" to "На вкладке «Пульт» доступны питание, сон, блокировка и таймеры, а в Studio Pro — тачпад-мышь, горячие клавиши и громкость.",
+        "tourStep4Title" to "4. Linux, файлы и вход с телефона",
+        "tourStep4Body" to "Передавайте файлы между телефоном и ПК, синхронизируйте заметки и настройте вход по отпечатку с экрана блокировки.",
+        "tourNext" to "Далее",
+        "tourPrev" to "Назад",
+        "tourDone" to "Начать работу",
+        "replayTourBtn" to "Показать обучение и подсказки",
+        "tipRemote" to "Подсказка: «Разблокировать» входит с экрана блокировки, «Разбудить ПК» включает по сети (WoL), а плеер управляет звуком.",
+        "tipStudio" to "Подсказка: водите пальцем по тачпаду для курсора, нажмите — ЛКМ, двумя пальцами — ПКМ, ниже — кнопки Stream Deck.",
+        "tipTransfer" to "Подсказка: выберите файл для отправки в общую папку ПК или мгновенно синхронизируйте текст и ссылки через буфер.",
+        "tipSettings" to "Подсказка: нажмите «Найти ПК в Wi-Fi» или «Сканировать QR / Вставить код», чтобы подключить Windows или Linux ПК за секунды.",
+        "linuxSignInCta" to "Разблокировать сессию Linux",
+        "scanQrCameraBtn" to "Сканировать QR-код с ПК",
+        "scanQrCameraPrompt" to "Наведите камеру на QR-код в приложении на ПК",
+        "qrConnectedSuccess" to "Компьютер добавлен по QR-коду!"
     )
 
     private val UK = mapOf(
@@ -695,10 +752,37 @@ object Translations {
         "unitMinShort" to "хв",
         "unitMb" to "МБ",
         "unitKb" to "КБ",
-        "unitByte" to "Б"
+        "unitByte" to "Б",
+        "scanNetworkBtn" to "Знайти ПК у Wi-Fi",
+        "scanningNetwork" to "Сканую локальну мережу Wi-Fi...",
+        "scanFoundPrefix" to "Знайдено ПК у мережі: ",
+        "scanNoneFound" to "ПК не знайдено. Перевірте, що телефон і ПК в одній мережі Wi-Fi та відкриті порти 8765/8766.",
+        "scanPickTitle" to "Оберіть ПК у мережі",
+        "tourTitle" to "Швидкий старт",
+        "tourStep1Title" to "1. Швидке підключення до ПК",
+        "tourStep1Body" to "Запустіть інсталятор на Windows або Linux, потім натисніть «Знайти ПК у Wi-Fi» або відскануйте QR-код — вводити IP вручну не потрібно.",
+        "tourStep2Title" to "2. Єдиний PIN-код",
+        "tourStep2Body" to "Один і той самий PIN-код використовується і для підключення до сервера, і для розблокування екрана входу Windows або Linux.",
+        "tourStep3Title" to "3. Тачпад, медіа та Wake-on-LAN",
+        "tourStep3Body" to "На вкладці «Пульт» доступні живлення, сон, блокування й таймери, а в Studio Pro — тачпад-миша, гарячі клавіші та гучність.",
+        "tourStep4Title" to "4. Linux, файли та вхід з телефона",
+        "tourStep4Body" to "Передавайте файли між телефоном і ПК, синхронізуйте нотатки та налаштуйте вхід за відбитком з екрана блокування.",
+        "tourNext" to "Далі",
+        "tourPrev" to "Назад",
+        "tourDone" to "Почати роботу",
+        "replayTourBtn" to "Показати навчання та підказки",
+        "tipRemote" to "Підказка: «Розблокувати» входить з екрана блокування, «Розбудити ПК» вмикає по мережі (WoL), а плеєр керує звуком.",
+        "tipStudio" to "Підказка: водіть пальцем по тачпаду для курсора, торкніться — ЛКМ, двома пальцями — ПКМ, нижче — кнопки Stream Deck.",
+        "tipTransfer" to "Підказка: оберіть файл для надсилання в спільну папку ПК або миттєво синхронізуйте текст і посилання через буфер.",
+        "tipSettings" to "Підказка: натисніть «Знайти ПК у Wi-Fi» або «Сканувати QR / Вставити код», щоб підключити Windows або Linux ПК за секунди.",
+        "linuxSignInCta" to "Розблокувати сесію Linux",
+        "scanQrCameraBtn" to "Сканувати QR-код з ПК",
+        "scanQrCameraPrompt" to "Наведіть камеру на QR-код у програмі на ПК",
+        "qrConnectedSuccess" to "Комп'ютер додано по QR-коду!"
     )
 
     fun tr(lang: String, key: String): String {
+        if (key == "biometricUnavailable") return biometricUnavailable[lang] ?: biometricUnavailable.getValue("en")
         return when (lang) {
             "ru" -> RU[key] ?: CompanionStrings.get("ru", key) ?: EN[key] ?: key
             "uk" -> UK[key] ?: CompanionStrings.get("uk", key) ?: RU[key] ?: EN[key] ?: key

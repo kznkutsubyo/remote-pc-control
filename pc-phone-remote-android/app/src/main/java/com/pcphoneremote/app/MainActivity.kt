@@ -24,6 +24,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,6 +63,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
@@ -144,11 +147,58 @@ class MainActivity : ComponentActivity() {
     private var pickerDevice: DeviceProfileModel? = null
     private var pendingDownloadName: String? = null
     private var deepLinkEnrollCode by mutableStateOf<String?>(null)
+    private var showOnboardingTourState by mutableStateOf(false)
+    private var tipRefreshTick by mutableIntStateOf(0)
+    private var showScanNetworkModalState by mutableStateOf(false)
+    private var editorPrefillState by mutableStateOf<UnlockCrypto.DiscoveredPc?>(null)
+
+    private fun isTipDismissed(key: String): Boolean = prefs.getBoolean("tip_dismissed_$key", false)
+
+    private fun dismissTip(key: String) {
+        prefs.edit().putBoolean("tip_dismissed_$key", true).apply()
+        tipRefreshTick++
+    }
+
+    private fun resetAllTipsAndShowTour() {
+        val edit = prefs.edit()
+        for (k in listOf("remote", "studio", "transfer", "settings")) {
+            edit.remove("tip_dismissed_$k")
+        }
+        edit.putBoolean("onboarding_tour_completed_v2", false).apply()
+        tipRefreshTick++
+        showOnboardingTourState = true
+    }
 
     // Touchpad throttling
     private var pendingDx = 0f
     private var pendingDy = 0f
     private var touchMoveScheduled = false
+
+    private var qrEnrollCallback: ((String) -> Unit)? = null
+    private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
+        val raw = result.contents?.trim().orEmpty()
+        val cb = qrEnrollCallback
+        qrEnrollCallback = null
+        if (raw.isEmpty()) return@registerForActivityResult
+        if (cb != null) {
+            cb(raw)
+        } else {
+            importCodeOrUri(raw) { ok, msg ->
+                setBanner(if (ok) tr("qrConnectedSuccess") else msg, if (ok) "success" else "danger")
+            }
+        }
+    }
+
+    private fun launchQrScanner(onRawResult: ((String) -> Unit)? = null) {
+        qrEnrollCallback = onRawResult
+        val options = ScanOptions().apply {
+            setPrompt(tr("scanQrCameraPrompt"))
+            setBeepEnabled(true)
+            setOrientationLocked(false)
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+        }
+        qrScannerLauncher.launch(options)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -165,6 +215,9 @@ class MainActivity : ComponentActivity() {
         currentTab = initialTab
         persistProfilesToPrefs()
         bannerMessage = tr("idle")
+        if (!prefs.getBoolean("onboarding_tour_completed_v2", false)) {
+            showOnboardingTourState = true
+        }
 
         handleIncomingIntent(intent)
 
@@ -606,31 +659,63 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Standard device profile import (`pcphone://add?...` or JSON)
+        // Standard device profile import (`pcphone://add?...`, http PWA URL, or JSON)
         try {
             val item = if (raw.startsWith("{")) {
                 JSONObject(raw)
             } else {
                 val uri = Uri.parse(raw)
-                if (uri.scheme != "pcphone" || uri.host != "add") throw IllegalArgumentException()
-                JSONObject()
-                    .put("name", uri.getQueryParameter("name") ?: tr("defaultProfileName"))
-                    .put("host", uri.getQueryParameter("host") ?: "")
-                    .put("port", uri.getQueryParameter("port") ?: "8765")
-                    .put("pin", uri.getQueryParameter("pin") ?: "")
+                when {
+                    uri.scheme == "pcphone" && uri.host == "add" -> {
+                        JSONObject()
+                            .put("name", uri.getQueryParameter("name") ?: tr("defaultProfileName"))
+                            .put("host", uri.getQueryParameter("host") ?: "")
+                            .put("port", uri.getQueryParameter("port") ?: "8765")
+                            .put("pin", uri.getQueryParameter("pin") ?: "")
+                            .put("mac", uri.getQueryParameter("mac") ?: "")
+                    }
+                    (uri.scheme == "http" || uri.scheme == "https") && !uri.host.isNullOrBlank() -> {
+                        JSONObject()
+                            .put("name", uri.getQueryParameter("name") ?: uri.host ?: tr("defaultProfileName"))
+                            .put("host", uri.getQueryParameter("host") ?: uri.host ?: "")
+                            .put("port", uri.getQueryParameter("port") ?: (if (uri.port > 0) uri.port.toString() else "8765"))
+                            .put("pin", uri.getQueryParameter("pin") ?: "")
+                            .put("mac", uri.getQueryParameter("mac") ?: "")
+                    }
+                    else -> throw IllegalArgumentException()
+                }
             }
             val profile = DeviceProfileModel(
                 name = item.optString("name", tr("defaultProfileName")).ifBlank { tr("defaultProfileName") },
                 host = item.optString("host", "").trim(),
                 port = item.optString("port", "8765").ifBlank { "8765" },
-                pin = item.optString("pin", "")
+                pin = item.optString("pin", ""),
+                mac = item.optString("mac", "").trim()
             )
             RemoteClient(profile.host, profile.port, profile.pin)
             if (profile.pin.isEmpty()) throw IllegalArgumentException()
-            profilesState = profilesState + profile
-            selectedProfileIndex = profilesState.size - 1
+            val existingIdx = profilesState.indexOfFirst {
+                it.host.equals(profile.host, ignoreCase = true) && it.port == profile.port
+            }
+            if (existingIdx >= 0) {
+                val updated = profilesState.toMutableList()
+                val keptMac = profile.mac.ifBlank { updated[existingIdx].mac }
+                updated[existingIdx] = updated[existingIdx].copy(
+                    name = profile.name,
+                    pin = profile.pin,
+                    mac = keptMac
+                )
+                profilesState = updated
+                selectedProfileIndex = existingIdx
+                clients.remove(updated[existingIdx].id)
+            } else {
+                profilesState = profilesState + profile
+                selectedProfileIndex = profilesState.size - 1
+            }
+            val active = profilesState[selectedProfileIndex]
             persistProfilesToPrefs()
             selectTab(0)
+            refreshDeviceStatus(active)
             setBanner(tr("importProfileSaved"), "success")
             onComplete?.invoke(true, tr("importProfileSaved"))
         } catch (_: Exception) {
@@ -849,7 +934,12 @@ class MainActivity : ComponentActivity() {
             DeviceEditorModal(
                 palette = palette,
                 editIndex = showDeviceEditorIndex!!,
-                onDismiss = { showDeviceEditorIndex = null }
+                prefill = editorPrefillState,
+                onScanNetwork = { showScanNetworkModalState = true },
+                onDismiss = {
+                    editorPrefillState = null
+                    showDeviceEditorIndex = null
+                }
             )
         }
 
@@ -926,6 +1016,28 @@ class MainActivity : ComponentActivity() {
                     showDeviceEditorIndex = -1
                 },
                 onDismiss = { showDevicePickerModal = false }
+            )
+        }
+
+        if (showScanNetworkModalState) {
+            LanDiscoveryModal(
+                palette = palette,
+                onSelectPc = { pc ->
+                    editorPrefillState = pc
+                    showScanNetworkModalState = false
+                    showDeviceEditorIndex = -1
+                },
+                onDismiss = { showScanNetworkModalState = false }
+            )
+        }
+
+        if (showOnboardingTourState) {
+            FirstTimeOnboardingModal(
+                palette = palette,
+                onFinish = {
+                    prefs.edit().putBoolean("onboarding_tour_completed_v2", true).apply()
+                    showOnboardingTourState = false
+                }
             )
         }
     }
@@ -1115,8 +1227,12 @@ class MainActivity : ComponentActivity() {
         val cpuVal = if (stateJson != null && stateJson.has("cpu")) stateJson.optDouble("cpu", 0.0).roundToInt() else null
         val ramVal = if (stateJson != null && stateJson.has("ram")) stateJson.optDouble("ram", 0.0).roundToInt() else null
         val diskVal = if (stateJson != null && stateJson.has("disk")) stateJson.optDouble("disk", 0.0).roundToInt() else null
-        val batteryObj = stateJson?.optJSONObject("battery")
-        val batteryVal = if (batteryObj != null && batteryObj.has("percent")) batteryObj.optInt("percent", 0) else null
+        val batteryVal = when {
+            stateJson == null || !stateJson.has("battery") || stateJson.isNull("battery") -> null
+            stateJson.optJSONObject("battery")?.has("percent") == true -> stateJson.optJSONObject("battery")?.optInt("percent", 0)
+            stateJson.opt("battery") is Number -> (stateJson.opt("battery") as Number).toInt()
+            else -> null
+        }
         val uptimeSec = stateJson?.optLong("uptime", 0L) ?: 0L
 
         Column(
@@ -1126,6 +1242,12 @@ class MainActivity : ComponentActivity() {
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            CoachMarkTipBanner(
+                palette = palette,
+                tipKey = "remote",
+                message = tr("tipRemote"),
+                refreshTick = tipRefreshTick
+            )
             // Pre-setup Warning Card: warns user that Windows login from phone is available after entering PIN/password in Windows configure.bat
             if (!isEnrolled) {
                 Surface(
@@ -1697,6 +1819,12 @@ class MainActivity : ComponentActivity() {
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            CoachMarkTipBanner(
+                palette = palette,
+                tipKey = "studio",
+                message = tr("tipStudio"),
+                refreshTick = tipRefreshTick
+            )
             // 1. One-Tap Scenes (Сценарии в 1 тап)
             Text(
                 text = tr("scenesTitle"),
@@ -2142,6 +2270,12 @@ class MainActivity : ComponentActivity() {
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            CoachMarkTipBanner(
+                palette = palette,
+                tipKey = "transfer",
+                message = tr("tipTransfer"),
+                refreshTick = tipRefreshTick
+            )
             // Upload & Shared Files Card
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -2430,6 +2564,12 @@ class MainActivity : ComponentActivity() {
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            CoachMarkTipBanner(
+                palette = palette,
+                tipKey = "settings",
+                message = tr("tipSettings"),
+                refreshTick = tipRefreshTick
+            )
             // 1. Computers (Устройства ПК)
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -2466,6 +2606,47 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Text(text = tr("addProfileTitle"), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { launchQrScanner() },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "📷 ${tr("scanQrCameraBtn")}",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { showScanNetworkModalState = true },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.55f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.accent.copy(alpha = 0.10f)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "🔍 ${tr("scanNetworkBtn")}",
+                                color = palette.accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
@@ -2738,6 +2919,14 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    OutlinedButton(
+                        onClick = { resetAllTipsAndShowTour() },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "💡 ${tr("replayTourBtn")}", color = palette.accent, fontWeight = FontWeight.SemiBold)
+                    }
+
                     // Clear History Button
                     OutlinedButton(
                         onClick = {
@@ -2878,6 +3067,7 @@ class MainActivity : ComponentActivity() {
         onOpenRdp: () -> Unit,
         onDismiss: () -> Unit
     ) {
+        val isLinuxSession = statusJson?.optJSONObject("unlock")?.optString("vault_mode", "") == "linux_logind"
         val hasSplitKeyVault = enrollMeta?.hasSplitKey == true
         val requiresPhonePin = enrollMeta?.requiresPhonePin == true
         var useManualPassword by remember(hasSplitKeyVault) { mutableStateOf(!hasSplitKeyVault) }
@@ -2888,6 +3078,30 @@ class MainActivity : ComponentActivity() {
         var stepState by remember { mutableIntStateOf(0) } // 0=idle, 1=challenge, 2=encrypt, 3=submit, 4=done
         var errorMsg by remember { mutableStateOf("") }
         var successMsg by remember { mutableStateOf("") }
+
+        fun executeLinuxUnlockFlow() {
+            errorMsg = ""
+            successMsg = ""
+            stepState = 1
+            worker.execute {
+                try {
+                    val client = getOrCreateClient(profile)
+                    val resp = client.call(JSONObject().put("action", "unlock.linux"))
+                    uiHandler.post {
+                        stepState = 4
+                        successMsg = resp.optString("message", "").ifEmpty { tr("unlockSuccess") }
+                        addHistory(profile, tr("remoteLogin"), true)
+                        refreshDeviceStatus(profile)
+                    }
+                } catch (e: Exception) {
+                    uiHandler.post {
+                        stepState = 0
+                        errorMsg = e.message?.ifEmpty { null } ?: tr("errUnlockFailed")
+                        addHistory(profile, tr("remoteLogin"), false)
+                    }
+                }
+            }
+        }
 
         fun executeUnlockFlow() {
             if (enrollMeta == null) {
@@ -3031,22 +3245,46 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Mandatory Pre-Setup Warning Notice
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = palette.warning.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, palette.warning.copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = tr("unlockSheetWarning"),
-                            color = palette.textPrimary,
-                            fontSize = 11.5.sp,
-                            lineHeight = 16.sp,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                    // Mandatory Pre-Setup Warning Notice (Windows only)
+                    if (!isLinuxSession) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = palette.warning.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, palette.warning.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = tr("unlockSheetWarning"),
+                                color = palette.textPrimary,
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
 
-                    if (enrollMeta == null) {
+                    if (isLinuxSession) {
+                        if (errorMsg.isNotEmpty()) {
+                            Text(text = errorMsg, color = palette.danger, fontSize = 12.sp)
+                        }
+                        if (successMsg.isNotEmpty()) {
+                            Text(text = "✓ $successMsg", color = palette.success, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { executeLinuxUnlockFlow() },
+                            enabled = stepState == 0 || stepState == 4,
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = tr("linuxSignInCta"),
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                    } else if (enrollMeta == null) {
                         Button(
                             onClick = onOpenEnroll,
                             colors = ButtonDefaults.buttonColors(containerColor = palette.warning),
@@ -3274,6 +3512,23 @@ class MainActivity : ComponentActivity() {
                         fontSize = 12.sp,
                         lineHeight = 16.5.sp
                     )
+                    Button(
+                        onClick = {
+                            launchQrScanner { scanned ->
+                                codeInput = scanned
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "📷 ${tr("scanQrCameraBtn")}",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     var showEnrollHost by remember { mutableStateOf(false) }
                     OutlinedTextField(
                         value = codeInput,
@@ -3597,20 +3852,13 @@ class MainActivity : ComponentActivity() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
+            Image(
+                painter = painterResource(R.drawable.ic_launcher),
+                contentDescription = null,
                 modifier = Modifier
-                    .size(72.dp)
+                    .size(80.dp)
                     .clip(RoundedCornerShape(22.dp))
-                    .background(palette.accent.copy(alpha = 0.15f))
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_devices_tab),
-                    contentDescription = null,
-                    tint = palette.accent,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
+            )
             Spacer(Modifier.height(18.dp))
             Text(
                 text = tr("onboardingTitle"),
@@ -3627,8 +3875,40 @@ class MainActivity : ComponentActivity() {
             )
             Spacer(Modifier.height(22.dp))
             Button(
-                onClick = onAddDevice,
+                onClick = { launchQrScanner() },
                 colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "📷 ${tr("scanQrCameraBtn")}",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { showScanNetworkModalState = true },
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.55f)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = palette.accent.copy(alpha = 0.10f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "🔍 ${tr("scanNetworkBtn")}",
+                    color = palette.accent,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onAddDevice,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3636,10 +3916,10 @@ class MainActivity : ComponentActivity() {
             ) {
                 Text(
                     text = tr("addProfileTitle"),
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    color = palette.textPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
             Spacer(Modifier.height(10.dp))
@@ -3654,6 +3934,15 @@ class MainActivity : ComponentActivity() {
                     fontSize = 14.sp
                 )
             }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = { showOnboardingTourState = true }) {
+                Text(
+                    text = "💡 ${tr("tourTitle")}",
+                    color = palette.accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 
@@ -3661,14 +3950,17 @@ class MainActivity : ComponentActivity() {
     private fun DeviceEditorModal(
         palette: RemoteThemePalette,
         editIndex: Int,
+        prefill: UnlockCrypto.DiscoveredPc? = null,
+        onScanNetwork: () -> Unit = {},
         onDismiss: () -> Unit
     ) {
         val existing = if (editIndex >= 0 && editIndex < profilesState.size) profilesState[editIndex] else null
-        var name by remember { mutableStateOf(existing?.name ?: "") }
-        var host by remember { mutableStateOf(existing?.host ?: "") }
-        var port by remember { mutableStateOf(existing?.port ?: "8765") }
-        var pin by remember { mutableStateOf(existing?.pin ?: "") }
-        var showHost by remember { mutableStateOf(existing == null) }
+        var name by remember(editIndex, prefill) { mutableStateOf(prefill?.name ?: existing?.name ?: "") }
+        var host by remember(editIndex, prefill) { mutableStateOf(prefill?.host ?: existing?.host ?: "") }
+        var port by remember(editIndex, prefill) { mutableStateOf(prefill?.port?.toString() ?: existing?.port ?: "8765") }
+        var mac by remember(editIndex, prefill) { mutableStateOf(prefill?.mac ?: existing?.mac ?: "") }
+        var pin by remember(editIndex) { mutableStateOf(existing?.pin ?: "") }
+        var showHost by remember(editIndex, prefill) { mutableStateOf(existing == null || prefill != null) }
         var showPin by remember { mutableStateOf(false) }
         var errorText by remember { mutableStateOf("") }
 
@@ -3691,6 +3983,25 @@ class MainActivity : ComponentActivity() {
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
+
+                    if (existing == null) {
+                        OutlinedButton(
+                            onClick = onScanNetwork,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.55f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.accent.copy(alpha = 0.10f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "🔍 ${tr("scanNetworkBtn")}",
+                                color = palette.accent,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
                     OutlinedTextField(
                         value = name,
@@ -3795,7 +4106,7 @@ class MainActivity : ComponentActivity() {
                                         host = cleanHost,
                                         port = cleanPort,
                                         pin = pin,
-                                        mac = existing?.mac ?: ""
+                                        mac = mac.trim().ifEmpty { existing?.mac ?: "" }
                                     )
                                     val mutable = profilesState.toMutableList()
                                     if (existing == null) {
@@ -3858,6 +4169,27 @@ class MainActivity : ComponentActivity() {
                         color = palette.textSecondary,
                         fontSize = 12.sp
                     )
+                    Button(
+                        onClick = {
+                            launchQrScanner { scanned ->
+                                rawCode = scanned
+                                importCodeOrUri(scanned) { ok, msg ->
+                                    if (ok) onDismiss()
+                                    else errorMsg = msg
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "📷 ${tr("scanQrCameraBtn")}",
+                            color = Color.White,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     OutlinedTextField(
                         value = rawCode,
                         onValueChange = { rawCode = it },
@@ -4089,6 +4421,336 @@ class MainActivity : ComponentActivity() {
             bytes >= 1048576 -> String.format(Locale.ROOT, "%.1f %s", bytes / 1048576.0, tr("unitMb"))
             bytes >= 1024 -> String.format(Locale.ROOT, "%.1f %s", bytes / 1024.0, tr("unitKb"))
             else -> "$bytes ${tr("unitByte")}"
+        }
+    }
+
+    @Composable
+    private fun CoachMarkTipBanner(
+        palette: RemoteThemePalette,
+        tipKey: String,
+        message: String,
+        refreshTick: Int
+    ) {
+        val visible = remember(tipKey, refreshTick) { !isTipDismissed(tipKey) }
+        AnimatedVisibility(visible = visible) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = palette.accent.copy(alpha = if (palette.isLight) 0.10f else 0.14f),
+                border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.42f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "💡",
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = message,
+                        color = palette.textPrimary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.5.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = { dismissTip(tipKey) },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "✕",
+                            color = palette.textSecondary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun LanDiscoveryModal(
+        palette: RemoteThemePalette,
+        onSelectPc: (UnlockCrypto.DiscoveredPc) -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        var scanning by remember { mutableStateOf(true) }
+        var scanAttempt by remember { mutableIntStateOf(0) }
+        var discovered by remember { mutableStateOf<List<UnlockCrypto.DiscoveredPc>>(emptyList()) }
+
+        LaunchedEffect(scanAttempt) {
+            scanning = true
+            worker.execute {
+                val found = UnlockCrypto.discoverLocalPcs(1800)
+                uiHandler.post {
+                    discovered = found
+                    scanning = false
+                }
+            }
+        }
+
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = palette.surface1,
+                border = BorderStroke(1.dp, palette.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "🔍 ${tr("scanPickTitle")}",
+                        color = palette.textPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    if (scanning) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                color = palette.accent,
+                                strokeWidth = 2.5.dp,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                text = tr("scanningNetwork"),
+                                color = palette.textSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else if (discovered.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = palette.surface2,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = tr("scanNoneFound"),
+                                color = palette.textSecondary,
+                                fontSize = 12.5.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "${tr("scanFoundPrefix")}${discovered.size}",
+                            color = palette.success,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        discovered.forEach { pc ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = palette.surface2,
+                                border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectPc(pc) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = pc.name,
+                                                color = palette.textPrimary,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = palette.accent.copy(alpha = 0.16f)
+                                            ) {
+                                                Text(
+                                                    text = pc.os.uppercase(Locale.ROOT),
+                                                    color = palette.accent,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(
+                                            text = "${pc.host}:${pc.port}",
+                                            color = palette.textSecondary,
+                                            fontSize = 12.5.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        if (pc.mac.isNotEmpty()) {
+                                            Text(
+                                                text = "MAC: ${pc.mac}",
+                                                color = palette.textSecondary,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_chevron_right),
+                                        contentDescription = null,
+                                        tint = palette.accent,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text(text = tr("cancel"), color = palette.textSecondary)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Button(
+                            onClick = { scanAttempt++ },
+                            enabled = !scanning,
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = tr("refresh"),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun FirstTimeOnboardingModal(
+        palette: RemoteThemePalette,
+        onFinish: () -> Unit
+    ) {
+        var step by remember { mutableIntStateOf(0) }
+        val steps = listOf(
+            Triple("📡", tr("tourStep1Title"), tr("tourStep1Body")),
+            Triple("🔐", tr("tourStep2Title"), tr("tourStep2Body")),
+            Triple("🖱️", tr("tourStep3Title"), tr("tourStep3Body")),
+            Triple("🐧", tr("tourStep4Title"), tr("tourStep4Body"))
+        )
+        val (emoji, stepTitle, stepBody) = steps[step]
+
+        Dialog(onDismissRequest = onFinish) {
+            Surface(
+                shape = RoundedCornerShape(26.dp),
+                color = palette.surface1,
+                border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_launcher),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = tr("tourTitle"),
+                        color = palette.accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(palette.accent.copy(alpha = 0.15f))
+                    ) {
+                        Text(text = emoji, fontSize = 26.sp)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = stepTitle,
+                        color = palette.textPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stepBody,
+                        color = palette.textSecondary,
+                        fontSize = 13.5.sp,
+                        lineHeight = 19.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(18.dp))
+
+                    // Step indicator dots
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (i in steps.indices) {
+                            Box(
+                                modifier = Modifier
+                                    .width(if (i == step) 20.dp else 8.dp)
+                                    .height(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (i == step) palette.accent else palette.border
+                                    )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (step > 0) {
+                            TextButton(onClick = { step-- }) {
+                                Text(text = tr("tourPrev"), color = palette.textSecondary)
+                            }
+                        } else {
+                            TextButton(onClick = onFinish) {
+                                Text(text = tr("tourDone"), color = palette.textSecondary, fontSize = 12.sp)
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                if (step < steps.lastIndex) step++ else onFinish()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(
+                                text = tr(if (step < steps.lastIndex) "tourNext" else "tourDone"),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
