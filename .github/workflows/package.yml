@@ -111,6 +111,7 @@ jobs:
           mkdir -p "$HOME/.android"
           printf '%s' "$ANDROID_KEYSTORE" | base64 --decode > "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
+          echo "ANDROID_SIGNING_STORE_FILE=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
       - name: Build Android release APK
         working-directory: pc-phone-remote-android
         run: |

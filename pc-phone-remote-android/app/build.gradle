@@ -35,6 +35,8 @@ android {
     signingConfigs {
         localRelease {
             initWith signingConfigs.debug
+            def ciKeystore = System.getenv("ANDROID_SIGNING_STORE_FILE")
+            if (ciKeystore) storeFile file(ciKeystore)
         }
     }
 
