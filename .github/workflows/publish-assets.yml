@@ -1,0 +1,55 @@
+name: Publish Verified Assets
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: 'Run ID whose five build/package jobs passed for tag v2.3.0'
+        required: true
+permissions:
+  contents: write
+  actions: read
+env:
+  RELEASE_VERSION: '2.3.0'
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify build results and tag commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          gh run view "$SOURCE_RUN" --json headSha,jobs > run.json
+          git fetch origin "refs/tags/v$RELEASE_VERSION:refs/tags/v$RELEASE_VERSION"
+          test "$(jq -r .headSha run.json)" = "$(git rev-parse "v$RELEASE_VERSION^{commit}")"
+          jq -e '[.jobs[] | select(.name=="publish" or .name=="build-android" or .name=="build-windows" or .name=="build-linux" or .name=="build-ios")] | length==5 and all(.conclusion=="success")' run.json
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run }}
+          name: windows-and-source
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run }}
+          name: linux-installer
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run }}
+          name: android-apk
+          path: artifacts
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum *.exe *.run *.apk *.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.RELEASE_VERSION }}
+          name: PC Phone Remote ${{ env.RELEASE_VERSION }}
+          body_path: RELEASE_NOTES.md
+          files: artifacts/*
+          fail_on_unmatched_files: true
