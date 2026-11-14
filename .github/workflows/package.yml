@@ -159,7 +159,19 @@ jobs:
       - name: Generate SHA256SUMS.txt
         working-directory: artifacts
         run: sha256sum *.exe *.run *.apk *.zip > SHA256SUMS.txt
+      - name: Retain an already published complete release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v$RELEASE_VERSION" --json isDraft,assets > existing-release.json 2>/dev/null && jq -e '.isDraft == false and (.assets | length == 7)' existing-release.json; then
+            echo 'published=true' >> "$GITHUB_OUTPUT"
+            echo 'Published downloads are retained; reruns do not replace released binaries.'
+          else
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+          fi
       - uses: softprops/action-gh-release@v2
+        if: steps.existing.outputs.published != 'true'
         with:
           name: PC Phone Remote ${{ env.RELEASE_VERSION }}
           body_path: RELEASE_NOTES.md
