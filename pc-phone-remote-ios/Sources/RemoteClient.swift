@@ -81,6 +81,12 @@ final class AppStore: ObservableObject {
     @Published var discoveredPCs: [DiscoveredPC] = []
     @Published var isScanning: Bool = false
     @Published var pendingEnrollUri: ParsedEnrollUri?
+    @Published var customButtons: [[String: String]] = []
+    @Published var processes: [[String: Any]] = []
+    @Published var audioDevices: [[String: Any]] = []
+    @Published var audioSessions: [[String: Any]] = []
+    @Published var brightnessPercent: Double = 80
+    @Published var brightnessSupported: Bool = false
 
     private var cookiesByProfile: [String: String] = [:]
     private let redirectDelegate = NoRedirectSessionDelegate()
@@ -286,14 +292,58 @@ final class AppStore: ObservableObject {
             do {
                 let data = try Data(contentsOf: url)
                 let res = try await callAction(profile: profile, payload: [
-                    "action": "files.upload",
+                    "action": "files.put",
                     "name": url.lastPathComponent,
-                    "content": data.base64EncodedString(),
+                    "data": data.base64EncodedString(),
                 ])
                 setBanner((res["message"] as? String) ?? "File uploaded")
                 await refreshFiles()
             } catch {
                 setBanner(error.localizedDescription, isError: true)
+            }
+        }
+    }
+
+    func refreshCustomButtons() async {
+        guard let profile = activeProfile else { return }
+        if let res = try? await callAction(profile: profile, payload: ["action": "deck.custom_list"]),
+           let raw = res["buttons"] as? [[String: Any]]
+        {
+            customButtons = raw.map { item in
+                [
+                    "id": String(describing: item["id"] ?? ""),
+                    "label": String(describing: item["label"] ?? ""),
+                    "icon": String(describing: item["icon"] ?? "⚡"),
+                    "kind": String(describing: item["kind"] ?? "hotkey"),
+                ]
+            }
+        }
+    }
+
+    func refreshProcesses() async {
+        guard let profile = activeProfile else { return }
+        if let res = try? await callAction(profile: profile, payload: ["action": "processes.list"]),
+           let raw = res["processes"] as? [[String: Any]]
+        {
+            processes = raw
+        }
+    }
+
+    func refreshAudio() async {
+        guard let profile = activeProfile else { return }
+        if let res = try? await callAction(profile: profile, payload: ["action": "audio.list"]) {
+            audioDevices = (res["devices"] as? [[String: Any]]) ?? []
+            audioSessions = (res["sessions"] as? [[String: Any]]) ?? []
+        }
+    }
+
+    func refreshBrightness() async {
+        guard let profile = activeProfile else { return }
+        if let res = try? await callAction(profile: profile, payload: ["action": "display.status"]) {
+            let sup = (res["supported"] as? Bool) ?? false
+            brightnessSupported = sup
+            if let b = (res["brightness"] as? NSNumber)?.doubleValue {
+                brightnessPercent = b
             }
         }
     }
@@ -350,18 +400,19 @@ final class AppStore: ObservableObject {
         }
 
         if let comp = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           comp.scheme == "pcphone", comp.host == "add"
+           (comp.scheme == "pcphone" && comp.host == "add") || ((comp.scheme == "http" || comp.scheme == "https") && comp.path.hasPrefix("/app"))
         {
             let params = Dictionary(
                 (comp.queryItems ?? []).map { ($0.name, $0.value ?? "") },
                 uniquingKeysWith: { first, _ in first }
             )
-            let host = params["host"] ?? ""
+            let rawHost = params["host"] ?? comp.host ?? ""
             let pin = params["pin"] ?? ""
-            guard !host.isEmpty, !pin.isEmpty else { return }
+            guard !rawHost.isEmpty, !pin.isEmpty else { return }
+            let finalHost = comp.scheme == "https" ? "https://\(rawHost):\(params["port"] ?? "8765")" : rawHost
             addOrUpdateProfile(DeviceProfile(
                 name: params["name"]?.isEmpty == false ? params["name"]! : "PC",
-                host: host,
+                host: finalHost,
                 port: params["port"]?.isEmpty == false ? params["port"]! : "8765",
                 pin: pin,
                 mac: params["mac"] ?? ""

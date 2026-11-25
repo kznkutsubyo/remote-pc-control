@@ -17,11 +17,13 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.3.1</string>
+    <string>2.4.0</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>UILaunchScreen</key>
     <dict/>
+    <key>NSCameraUsageDescription</key>
+    <string>Scan PC Phone Remote QR codes to connect and enroll your PC instantly.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Authenticate with Face ID or Touch ID before signing in to your PC lock screen.</string>
     <key>NSLocalNetworkUsageDescription</key>

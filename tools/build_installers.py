@@ -861,7 +861,7 @@ namespace PCPhoneRemoteSetup
                     if (key != null)
                     {
                         key.SetValue("DisplayName", "PC Phone Remote");
-                        key.SetValue("DisplayVersion", "2.3.1");
+                        key.SetValue("DisplayVersion", "2.4.0");
                         key.SetValue("Publisher", "PC Phone Remote");
                         key.SetValue("InstallLocation", installDir);
                         string ico = Path.Combine(installDir, "pc-phone-remote", "assets", "app_icon.ico");
@@ -1585,7 +1585,7 @@ case "$INSTALL_LANG" in
   ru)
     MSG_UNINST="Удаление PC Phone Remote..."
     MSG_DONE_UNINST="Готово."
-    MSG_BANNER="        PC Phone Remote — Установщик Linux v2.3.1        "
+    MSG_BANNER="        PC Phone Remote — Установщик Linux v2.4.0        "
     MSG_S1="Проверка Python 3 и системных зависимостей..."
     MSG_S2="Распаковка файлов в ${INSTALL_DIR}..."
     MSG_S3="Настройка виртуального окружения Python..."
@@ -1599,7 +1599,7 @@ case "$INSTALL_LANG" in
   uk)
     MSG_UNINST="Видалення PC Phone Remote..."
     MSG_DONE_UNINST="Готово."
-    MSG_BANNER="        PC Phone Remote — Інсталятор Linux v2.3.1        "
+    MSG_BANNER="        PC Phone Remote — Інсталятор Linux v2.4.0        "
     MSG_S1="Перевірка Python 3 та системних компонентів..."
     MSG_S2="Розпакування файлів у ${INSTALL_DIR}..."
     MSG_S3="Налаштування віртуального середовища Python..."
@@ -1613,7 +1613,7 @@ case "$INSTALL_LANG" in
   *)
     MSG_UNINST="Uninstalling PC Phone Remote..."
     MSG_DONE_UNINST="Done."
-    MSG_BANNER="        PC Phone Remote — Linux Installer v2.3.1             "
+    MSG_BANNER="        PC Phone Remote — Linux Installer v2.4.0             "
     MSG_S1="Checking Python 3 & desktop helpers..."
     MSG_S2="Extracting application archive to ${INSTALL_DIR}..."
     MSG_S3="Setting up isolated Python virtual environment..."

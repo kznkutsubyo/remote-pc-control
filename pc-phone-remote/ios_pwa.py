@@ -85,12 +85,10 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
     .shell {{
       max-width: 520px; margin: 0 auto; min-height: 100vh;
       padding-top: env(safe-area-inset-top, 12px);
-      padding-bottom: calc(82px + env(safe-area-inset-bottom, 12px));
+      padding-bottom: calc(84px + env(safe-area-inset-bottom, 12px));
       display: flex; flex-direction: column;
     }}
-    .topbar {{
-      display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px;
-    }}
+    .topbar {{ display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; }}
     .pill {{
       flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px;
       background: var(--s1); border: 1px solid var(--border); border-radius: 999px;
@@ -110,19 +108,18 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }}
     .content {{ flex: 1; padding: 6px 16px 16px; display: flex; flex-direction: column; gap: 14px; }}
-    .card {{
-      background: var(--s1); border: 1px solid var(--border); border-radius: 22px; padding: 16px;
-    }}
+    .card {{ background: var(--s1); border: 1px solid var(--border); border-radius: 22px; padding: 16px; }}
     .card-title {{ font-size: 15px; font-weight: 700; margin: 0 0 8px; }}
     .muted {{ font-size: 12px; color: var(--muted); line-height: 1.45; }}
     .row {{ display: flex; gap: 10px; align-items: center; }}
     .grid2 {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
     .grid3 {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
     .btn {{
-      border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px;
+      border: 1px solid var(--border); border-radius: 14px; padding: 11px 12px;
       background: var(--s2); color: var(--txt); font: inherit; font-weight: 600;
       font-size: 13px; cursor: pointer; text-align: center;
     }}
+    .btn.active-seg {{ background: rgba(139,124,255,0.22); border-color: var(--accent); color: #fff; }}
     .btn-primary {{
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff; border: none; font-weight: 700;
@@ -139,20 +136,27 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
     }}
     .gauge-lbl {{ font-size: 11px; color: var(--muted); margin-top: 5px; }}
     .touchpad {{
-      height: 190px; border-radius: 18px; background: var(--s2); border: 1px solid var(--border);
+      height: 176px; border-radius: 18px; background: var(--s2); border: 1px solid var(--border);
       display: grid; place-items: center; color: var(--muted); font-size: 12px;
       touch-action: none; user-select: none; -webkit-user-select: none;
     }}
+    .screen-stage {{
+      width: 100%; border-radius: 14px; overflow: hidden; background: #05060a;
+      border: 1px solid var(--border); min-height: 120px; display: grid; place-items: center;
+      position: relative;
+    }}
+    .screen-stage img {{ width: 100%; display: block; cursor: crosshair; touch-action: manipulation; }}
     .chip-scroll {{ display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }}
     .chip {{
-      white-space: nowrap; border-radius: 14px; padding: 10px 14px;
-      background: var(--s1); border: 1px solid var(--border); color: var(--txt);
-      font-size: 12.5px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; border-radius: 14px; padding: 9px 13px;
+      background: var(--s2); border: 1px solid var(--border); color: var(--txt);
+      font-size: 12.5px; font-weight: 600; cursor: pointer; flex-shrink: 0;
     }}
-    input, textarea {{
+    input[type="text"], input[type="password"], textarea {{
       width: 100%; border-radius: 14px; border: 1px solid var(--border);
-      background: var(--s2); color: var(--txt); padding: 12px 14px; font: inherit; font-size: 14px;
+      background: var(--s2); color: var(--txt); padding: 11px 14px; font: inherit; font-size: 14px;
     }}
+    input[type="range"] {{ width: 100%; accent-color: var(--accent); }}
     .tip-card {{
       background: rgba(139,124,255,0.12); border: 1px solid rgba(139,124,255,0.38);
       border-radius: 18px; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start;
@@ -174,11 +178,11 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
     .login-wrap {{ max-width: 420px; margin: 40px auto; padding: 20px; }}
     .logo-img {{ width: 54px; height: 54px; border-radius: 14px; }}
     .modal-backdrop {{
-      position: fixed; inset: 0; background: rgba(0,0,0,0.68); z-index: 50;
-      display: grid; place-items: center; padding: 20px;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 50;
+      display: grid; place-items: center; padding: 16px; overflow-y: auto;
     }}
-    .modal {{ max-width: 420px; width: 100%; background: var(--s1); border: 1px solid var(--border); border-radius: 24px; padding: 20px; }}
-    .file-row {{ display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }}
+    .modal {{ max-width: 440px; width: 100%; background: var(--s1); border: 1px solid var(--border); border-radius: 24px; padding: 18px; max-height: 86vh; overflow-y: auto; }}
+    .file-row {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }}
   </style>
 </head>
 <body>
@@ -194,7 +198,7 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       <div class="tip-card" style="margin-bottom:14px;">
         <div style="font-size:18px;">💡</div>
         <div class="muted" id="iosInstallTip">
-          <b>iPhone / iPad:</b> Нажмите в Safari кнопку <b>«Поделиться»</b> (квадрат со стрелкой) → <b>«На экран Домой»</b>, чтобы установить это приложение как иконку на рабочий стол iOS!
+          <b>iPhone / iPad:</b> Нажмите в Safari кнопку <b>«Поделиться»</b> → <b>«На экран Домой»</b>, или установите нативный <code>.ipa</code> из GitHub Releases.
         </div>
       </div>
       <label class="muted" id="pinPromptLbl">Введите единый PIN-код с компьютера:</label>
@@ -257,7 +261,10 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       </div>
 
       <div class="card">
-        <div class="card-title" id="lblMedia">Медиа и звук</div>
+        <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+          <div class="card-title" style="margin:0;" id="lblMedia">Медиа и звук</div>
+          <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="openAudioMixerModal()">🎧 Микшер</button>
+        </div>
         <div class="grid3" style="margin-bottom:8px;">
           <button class="btn" onclick="sendMedia('previous')">⏮</button>
           <button class="btn btn-primary" onclick="sendMedia('play_pause')">⏯</button>
@@ -269,6 +276,17 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
           <button class="btn" onclick="sendMedia('volume_up')">🔊 +</button>
         </div>
       </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+          <div class="card-title" style="margin:0;">☀ Экран и яркость</div>
+          <span class="muted" id="brightPctLbl">--%</span>
+        </div>
+        <div id="brightSliderWrap" style="margin-bottom:10px;">
+          <input type="range" id="brightRange" min="0" max="100" value="80" oninput="document.getElementById('brightPctLbl').textContent=this.value+'%'" onchange="setBrightness(this.value)">
+        </div>
+        <button class="btn" style="width:100%;" onclick="rpc({{action:'display.off'}})">🌑 Выключить экран (без сна)</button>
+      </div>
     </div>
 
     <!-- TAB 1: STUDIO PRO -->
@@ -278,6 +296,48 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         <div style="flex:1;" class="muted" id="tip1Txt"></div>
         <button class="tip-close" onclick="dismissTip('1')">×</button>
       </div>
+
+      <!-- Live Screen & Coordinate Tap -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+          <div class="card-title" style="margin:0;">🖥 Экран ПК и клик</div>
+          <div class="row" style="gap:6px;">
+            <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="captureOnce()">📸 Снимок</button>
+            <button class="btn btn-primary" style="padding:6px 10px;font-size:12px;" id="liveToggleBtn" onclick="toggleLiveStream()">▶ Live</button>
+          </div>
+        </div>
+        <div class="chip-scroll" id="monitorPills" style="margin-bottom:8px;"></div>
+        <div class="screen-stage" id="screenStage">
+          <span class="muted" id="screenPlaceholder">Нажмите «📸 Снимок» или «▶ Live» для просмотра экрана</span>
+          <img id="screenImg" class="hidden" alt="PC Screen" onclick="onScreenTap(event)">
+        </div>
+        <div class="grid3" style="margin-top:8px;">
+          <button class="btn active-seg" id="tapBtnLeft" onclick="setTapBtn('left')">ЛКМ тап</button>
+          <button class="btn" id="tapBtnRight" onclick="setTapBtn('right')">ПКМ тап</button>
+          <button class="btn" id="tapBtnDouble" onclick="setTapBtn('double')">Двойной</button>
+        </div>
+      </div>
+
+      <!-- Live Keyboard & Hotkeys -->
+      <div class="card">
+        <div class="card-title">⌨ Клавиатура и хоткеи</div>
+        <div class="row" style="margin-bottom:10px;">
+          <input type="text" id="liveTypeInput" placeholder="Текст сразу в окно ПК...">
+          <button class="btn btn-primary" style="flex-shrink:0;" onclick="sendLiveText()">Ввод</button>
+        </div>
+        <div class="chip-scroll">
+          <button class="chip" onclick="sendHotkey('alt_tab')">Alt+Tab</button>
+          <button class="chip" onclick="sendHotkey('win_d')">Win+D</button>
+          <button class="chip" onclick="sendHotkey('switch_lang')">Язык</button>
+          <button class="chip" onclick="sendHotkey('ctrl_c')">Ctrl+C</button>
+          <button class="chip" onclick="sendHotkey('ctrl_v')">Ctrl+V</button>
+          <button class="chip" onclick="sendHotkey('alt_f4')">Alt+F4</button>
+          <button class="chip" onclick="sendHotkey('ctrl_shift_esc')">Дисп. задач</button>
+          <button class="chip" onclick="sendHotkey('enter')">Enter</button>
+          <button class="chip" onclick="sendHotkey('esc')">Esc</button>
+        </div>
+      </div>
+
       <div class="card-title" id="lblScenes">Сценарии в 1 тап</div>
       <div class="chip-scroll">
         <button class="chip" onclick="runScene('movie')">🎬 Кино</button>
@@ -296,11 +356,6 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
           <button class="btn" onclick="tpScroll(120)">Скролл ↑</button>
           <button class="btn" onclick="tpScroll(-120)">Скролл ↓</button>
         </div>
-        <div class="grid3" style="margin-top:8px;">
-          <button class="btn" onclick="tpKey('left')">← Назад</button>
-          <button class="btn" onclick="tpKey('f5')">F5</button>
-          <button class="btn" onclick="tpKey('right')">Далее →</button>
-        </div>
       </div>
 
       <div class="card">
@@ -313,6 +368,15 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
           <button class="btn" onclick="runDeck('browser')">🌐 Браузер</button>
           <button class="btn" onclick="runDeck('mute')">🔇 Мьют</button>
         </div>
+        <div id="customDeckWrap" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+          <div class="card-title" style="margin:0;">⚙ Процессы ПК</div>
+          <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="loadProcesses()">↻</button>
+        </div>
+        <div id="procListWrap"><div class="muted">Нажмите ↻ для загрузки процессов</div></div>
       </div>
     </div>
 
@@ -329,11 +393,13 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       </div>
 
       <div class="card">
-        <div class="card-title" id="lblNote">Общий текст и буфер</div>
+        <div class="card-title" id="lblNote">Буфер обмена и заметка</div>
         <textarea id="noteBox" rows="5" placeholder="Текст или ссылка..."></textarea>
         <div class="grid2" style="margin-top:10px;">
-          <button class="btn btn-primary" onclick="saveNote()">Отправить на ПК</button>
-          <button class="btn" onclick="loadNote()">Получить с ПК</button>
+          <button class="btn btn-primary" onclick="pushPcClipboard()">📋 В буфер ПК</button>
+          <button class="btn" onclick="pullPcClipboard()">📥 Из буфера ПК</button>
+          <button class="btn" onclick="saveNote()">💾 Сохр. заметку</button>
+          <button class="btn" onclick="loadNote()">📄 Загрузить заметку</button>
         </div>
       </div>
     </div>
@@ -343,7 +409,7 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       <div class="card">
         <div class="card-title">📱 iPhone / iPad (iOS)</div>
         <div class="muted" id="iosGuideDetail">
-          Добавьте эту страницу на «Экран Домой» через кнопку <b>Поделиться ↑ → На экран Домой</b> в Safari, чтобы пользоваться как полноценным приложением. Для нативной сборки iOS также доступна папка <code>pc-phone-remote-ios/</code>.
+          Добавьте эту страницу на «Экран Домой» через кнопку <b>Поделиться ↑ → На экран Домой</b> в Safari. Также в GitHub Releases доступен нативный <code>.ipa</code> для установки через Sideloadly / AltStore / TrollStore.
         </div>
       </div>
       <div class="card">
@@ -372,7 +438,6 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
     <button class="nav-btn" onclick="switchTab(3)" id="nav3"><span>⚙</span><span id="nav3Lbl">Настройки</span></button>
   </nav>
 
-  <!-- Simple Modals -->
   <div id="modalRoot" class="modal-backdrop hidden"></div>
 
   <script>
@@ -380,11 +445,14 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
     let hostOs = "{os_name}";
     let activeTab = 0;
     let lastStatus = null;
+    let activeMonitor = 0;
+    let tapButtonMode = 'left';
+    let liveStreamOn = false;
     let lang = localStorage.getItem('pcpr_lang') || 'ru';
     const TR = {{
-      ru: {{ nav:['Пульт','Студия','Обмен','Настройки'], tip0:'Подсказка: кнопка «Разблокировать ПК» снимает экран блокировки. Доступ к меню работает с одного PIN.', tip1:'Подсказка: водите пальцем по полю тачпада для перемещения курсора, 1 касание — клик, 2 кнопки ниже — ПКМ и скролл.', connOk:'На связи', locked:'Сессия заблокирована', unlocked:'Сессия активна', connect:'Подключиться' }},
-      uk: {{ nav:['Пульт','Студія','Обмін','Налаштування'], tip0:'Підказка: кнопка «Розблокувати ПК» відкриває екран блокування. Доступ працює за єдиним PIN.', tip1:'Підказка: проводьте пальцем по тачпаду для керування курсором, тап — клік мишею.', connOk:'На звʼязку', locked:'Сесія заблокована', unlocked:'Сесія активна', connect:'Підключитися' }},
-      en: {{ nav:['Remote','Studio','Transfer','Settings'], tip0:'Tip: Use "Unlock PC" to sign in from the lock screen. Everything uses your unified PIN.', tip1:'Tip: Slide on the trackpad to move the cursor, tap to click, or use Stream Deck macros below.', connOk:'Connected', locked:'Session locked', unlocked:'Session active', connect:'Connect' }}
+      ru: {{ nav:['Пульт','Студия','Обмен','Настройки'], tip0:'Подсказка: управляйте яркостью, выключайте монитор без сна или откройте Микшер приложений.', tip1:'Подсказка: смотрите экран ПК, тапайте по картинке и печатайте текст сразу в активное окно.', connOk:'На связи', locked:'Сессия заблокирована', unlocked:'Сессия активна', connect:'Подключиться' }},
+      uk: {{ nav:['Пульт','Студія','Обмін','Налаштування'], tip0:'Підказка: керуйте яскравістю, вимикайте екран без сну або відкрийте Мікшер програм.', tip1:'Підказка: дивіться екран ПК, натискайте по зображенню та вводьте текст у вікно.', connOk:'На звʼязку', locked:'Сесія заблокована', unlocked:'Сесія активна', connect:'Підключитися' }},
+      en: {{ nav:['Remote','Studio','Transfer','Settings'], tip0:'Tip: Adjust brightness, turn off the display without sleep, or open the App Volume Mixer.', tip1:'Tip: View your PC screen, tap directly on the image, and type into the focused window.', connOk:'Connected', locked:'Session locked', unlocked:'Session active', connect:'Connect' }}
     }};
 
     if (localStorage.getItem('pcpr_theme') === 'light') document.body.classList.add('light');
@@ -425,6 +493,8 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         document.getElementById('tab'+i).classList.toggle('hidden', i !== idx);
         document.getElementById('nav'+i).classList.toggle('active', i === idx);
       }}
+      if (idx !== 1 && liveStreamOn) toggleLiveStream(false);
+      if (idx === 1) loadCustomDeck();
       if (idx === 2) {{ loadFiles(); loadNote(); }}
     }}
 
@@ -438,15 +508,10 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
           headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
           body: 'pin=' + encodeURIComponent(pin)
         }});
-        if (!res.ok) {{
-          err.textContent = 'Неверный PIN-код';
-          return;
-        }}
+        if (!res.ok) {{ err.textContent = 'Неверный PIN-код'; return; }}
         isAuthed = true;
         initAuthedView();
-      }} catch (e) {{
-        err.textContent = 'Ошибка соединения с ПК';
-      }}
+      }} catch (e) {{ err.textContent = 'Ошибка соединения с ПК'; }}
     }}
 
     async function rpc(payload) {{
@@ -457,15 +522,8 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         body: JSON.stringify(payload)
       }});
       const data = await res.json();
-      if (res.status === 401) {{
-        isAuthed = false;
-        showLoginView();
-        throw new Error('Not authenticated');
-      }}
-      if (!res.ok) {{
-        setBanner(data.message || 'Ошибка', 'var(--danger)');
-        throw new Error(data.message || 'RPC Error');
-      }}
+      if (res.status === 401) {{ isAuthed = false; showLoginView(); throw new Error('Not authenticated'); }}
+      if (!res.ok) {{ setBanner(data.message || 'Ошибка', 'var(--danger)'); throw new Error(data.message || 'RPC Error'); }}
       setBanner('Готово', 'var(--ok)');
       return data;
     }}
@@ -476,8 +534,7 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         lastStatus = st;
         hostOs = st.os || hostOs;
         document.getElementById('pcNameLbl').textContent = st.hostname || 'My PC';
-        const dot = document.getElementById('connDot');
-        dot.className = 'dot ' + (st.locked ? 'warn' : 'ok');
+        document.getElementById('connDot').className = 'dot ' + (st.locked ? 'warn' : 'ok');
         const t = TR[lang] || TR.ru;
         document.getElementById('connSubLbl').textContent = t.connOk + ' · ' + (hostOs === 'linux' ? 'Linux' : 'Windows');
         document.getElementById('sessionBadgeLbl').textContent = st.locked ? ('🔒 ' + t.locked) : ('🔓 ' + t.unlocked);
@@ -486,8 +543,23 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         setRing('ramRing', Math.round(st.ram || 0));
         setRing('diskRing', st.battery != null ? Math.round(st.battery) : Math.round(st.disk || 0));
         document.getElementById('lblDisk').textContent = st.battery != null ? 'Battery' : 'Disk';
+        refreshBrightness();
       }} catch (e) {{}}
     }}
+
+    async function refreshBrightness() {{
+      try {{
+        const d = await rpc({{ action: 'display.status' }});
+        document.getElementById('brightSliderWrap').style.display = d.supported ? 'block' : 'none';
+        if (d.supported && d.brightness != null) {{
+          document.getElementById('brightRange').value = d.brightness;
+          document.getElementById('brightPctLbl').textContent = d.brightness + '%';
+        }} else {{
+          document.getElementById('brightPctLbl').textContent = 'DDC недоступен';
+        }}
+      }} catch (e) {{}}
+    }}
+    function setBrightness(val) {{ rpc({{ action: 'display.brightness', brightness: Number(val) }}); }}
 
     function setRing(id, pct) {{
       const el = document.getElementById(id);
@@ -501,10 +573,135 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
     function runDeck(macro) {{ rpc({{ action: 'deck.run', macro }}); }}
     function tpClick(button) {{ rpc({{ action: 'touchpad', mode: 'click', button }}); }}
     function tpScroll(delta) {{ rpc({{ action: 'touchpad', mode: 'scroll', delta }}); }}
-    function tpKey(key) {{ rpc({{ action: 'touchpad', mode: 'key', key }}); }}
+    function sendHotkey(hotkey) {{ rpc({{ action: 'keyboard.hotkey', hotkey }}); }}
     function sendWol() {{ rpc({{ action: 'wol.wake', mac: lastStatus?.mac || '' }}); }}
 
-    // Touchpad pointer gestures
+    function setTapBtn(mode) {{
+      tapButtonMode = mode;
+      document.getElementById('tapBtnLeft').classList.toggle('active-seg', mode === 'left');
+      document.getElementById('tapBtnRight').classList.toggle('active-seg', mode === 'right');
+      document.getElementById('tapBtnDouble').classList.toggle('active-seg', mode === 'double');
+    }}
+
+    async function captureOnce() {{
+      if (liveStreamOn) toggleLiveStream(false);
+      const res = await rpc({{ action: 'screen.capture', monitor: activeMonitor, max_width: 960, quality: 60 }});
+      const img = document.getElementById('screenImg');
+      img.src = 'data:image/jpeg;base64,' + res.image_b64;
+      img.classList.remove('hidden');
+      document.getElementById('screenPlaceholder').classList.add('hidden');
+      renderMonitorPills(res.monitors || []);
+    }}
+
+    function renderMonitorPills(monitors) {{
+      const wrap = document.getElementById('monitorPills');
+      if (!monitors.length) {{ wrap.innerHTML = ''; return; }}
+      wrap.innerHTML = monitors.map(m =>
+        `<button class="chip" style="${{m.id === activeMonitor ? 'border-color:var(--accent);color:var(--accent);' : ''}}" onclick="selectMonitor(${{m.id}})">${{m.name}} (${{m.width}}×${{m.height}})</button>`
+      ).join('');
+    }}
+
+    function selectMonitor(id) {{
+      activeMonitor = id;
+      if (liveStreamOn) {{
+        document.getElementById('screenImg').src = '/api/screen.mjpg?monitor=' + id + '&fps=3&t=' + Date.now();
+      }} else {{
+        captureOnce();
+      }}
+    }}
+
+    function toggleLiveStream(forceState) {{
+      liveStreamOn = (forceState !== undefined) ? forceState : !liveStreamOn;
+      const btn = document.getElementById('liveToggleBtn');
+      const img = document.getElementById('screenImg');
+      btn.textContent = liveStreamOn ? '⏹ Стоп' : '▶ Live';
+      if (liveStreamOn) {{
+        img.src = '/api/screen.mjpg?monitor=' + activeMonitor + '&fps=3&t=' + Date.now();
+        img.classList.remove('hidden');
+        document.getElementById('screenPlaceholder').classList.add('hidden');
+      }} else {{
+        img.src = '';
+      }}
+    }}
+
+    function onScreenTap(ev) {{
+      const img = document.getElementById('screenImg');
+      const rect = img.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const nx = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      const ny = Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+      rpc({{ action: 'screen.tap', nx, ny, monitor: activeMonitor, button: tapButtonMode }}).then(() => {{
+        if (!liveStreamOn) setTimeout(() => captureOnce(), 250);
+      }});
+    }}
+
+    async function sendLiveText() {{
+      const inp = document.getElementById('liveTypeInput');
+      const text = inp.value;
+      if (!text) return;
+      await rpc({{ action: 'keyboard.type', text }});
+      inp.value = '';
+    }}
+
+    async function loadCustomDeck() {{
+      try {{
+        const res = await rpc({{ action: 'deck.custom_list' }});
+        const wrap = document.getElementById('customDeckWrap');
+        const list = res.buttons || [];
+        if (!list.length) {{ wrap.innerHTML = ''; return; }}
+        wrap.innerHTML = '<div class="muted" style="margin:6px 0;">Мои кнопки:</div><div class="grid2">' +
+          list.map(b => `<button class="btn" onclick="rpc({{action:'deck.custom_run', id:'${{b.id}}'}})">${{b.icon}} ${{b.label}}</button>`).join('') +
+          '</div>';
+      }} catch (e) {{}}
+    }}
+
+    async function loadProcesses() {{
+      try {{
+        const res = await rpc({{ action: 'processes.list' }});
+        const wrap = document.getElementById('procListWrap');
+        const list = res.processes || [];
+        if (!list.length) {{ wrap.innerHTML = '<div class="muted">Нет данных</div>'; return; }}
+        wrap.innerHTML = list.map(p => `
+          <div class="file-row">
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;">${{p.name}}</div>
+              <div class="muted">PID ${{p.pid}} · ${{Math.round(p.mem_mb)}} МБ</div>
+            </div>
+            <button class="btn btn-danger" style="padding:5px 10px;font-size:12px;" onclick="killProc(${{p.pid}}, '${{p.name.replace(/'/g, "\\\\'")}}')">✕</button>
+          </div>`).join('');
+      }} catch (e) {{}}
+    }}
+
+    async function killProc(pid, name) {{
+      if (!confirm('Завершить процесс ' + name + ' (PID ' + pid + ')?')) return;
+      await rpc({{ action: 'processes.kill', pid }});
+      loadProcesses();
+    }}
+
+    async function openAudioMixerModal() {{
+      const m = document.getElementById('modalRoot');
+      m.innerHTML = `<div class="modal"><div class="card-title">🎧 Аудиовыходы и микшер</div><div class="muted">Загрузка...</div></div>`;
+      m.classList.remove('hidden');
+      try {{
+        const st = await rpc({{ action: 'audio.list' }});
+        const devs = (st.devices || []).map(d =>
+          `<button class="btn ${{d.active ? 'btn-primary' : ''}}" style="width:100%;margin-bottom:6px;text-align:left;" onclick="switchAudioDev('${{d.id.replace(/'/g, "\\\\'")}}')">${{d.active ? '🔊 ' : '🔈 '}}${{d.name}}</button>`
+        ).join('') || '<div class="muted">Устройства не найдены</div>';
+        const apps = (st.sessions || []).map(s => `
+          <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <div class="row" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:13px;font-weight:600;">${{s.name}}</span>
+              <button class="btn" style="padding:4px 9px;font-size:12px;" onclick="toggleAppMute(${{s.pid}}, ${{!s.muted}})">${{s.muted ? '🔇' : '🔊'}} ${{s.volume}}%</button>
+            </div>
+            <input type="range" min="0" max="100" value="${{s.volume}}" onchange="setAppVol(${{s.pid}}, this.value)">
+          </div>`).join('') || '<div class="muted">Нет активных аудиопотоков</div>';
+        m.innerHTML = `<div class="modal"><div class="card-title">🎧 Устройства вывода</div>${{devs}}<div class="card-title" style="margin-top:12px;">Микшер программ</div>${{apps}}<div style="height:10px;"></div><button class="btn" style="width:100%;" onclick="closeModal()">Закрыть</button></div>`;
+      }} catch (e) {{ m.innerHTML = `<div class="modal"><div class="muted">${{e.message}}</div><button class="btn" style="width:100%;margin-top:10px;" onclick="closeModal()">Закрыть</button></div>`; }}
+    }}
+    async function switchAudioDev(device_id) {{ await rpc({{ action: 'audio.set_output', device_id }}); openAudioMixerModal(); }}
+    async function setAppVol(pid, vol) {{ await rpc({{ action: 'audio.set_app_volume', pid, volume: Number(vol) }}); }}
+    async function toggleAppMute(pid, muted) {{ await rpc({{ action: 'audio.set_app_volume', pid, muted }}); openAudioMixerModal(); }}
+
     (function setupTouchpad() {{
       const area = document.getElementById('touchpadArea');
       let lx = 0, ly = 0, moved = false, pendingX = 0, pendingY = 0, scheduled = false;
@@ -514,9 +711,7 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         pendingX = 0; pendingY = 0;
         if (dx || dy) fetch('/api/v2', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{action:'touchpad', mode:'move', dx, dy}}) }});
       }}
-      area.addEventListener('touchstart', (e) => {{
-        const t = e.touches[0]; lx = t.clientX; ly = t.clientY; moved = false;
-      }}, {{ passive: false }});
+      area.addEventListener('touchstart', (e) => {{ const t = e.touches[0]; lx = t.clientX; ly = t.clientY; moved = false; }}, {{ passive: false }});
       area.addEventListener('touchmove', (e) => {{
         e.preventDefault();
         const t = e.touches[0];
@@ -526,9 +721,7 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
         pendingX += dx; pendingY += dy;
         if (!scheduled) {{ scheduled = true; setTimeout(flushMove, 45); }}
       }}, {{ passive: false }});
-      area.addEventListener('touchend', () => {{
-        if (!moved) tpClick('left');
-      }});
+      area.addEventListener('touchend', () => {{ if (!moved) tpClick('left'); }});
     }})();
 
     async function loadFiles() {{
@@ -568,14 +761,10 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       URL.revokeObjectURL(url);
     }}
 
-    async function saveNote() {{
-      const text = document.getElementById('noteBox').value;
-      await rpc({{ action: 'note.set', text }});
-    }}
-    async function loadNote() {{
-      const res = await rpc({{ action: 'note.get' }});
-      document.getElementById('noteBox').value = res.text || '';
-    }}
+    async function saveNote() {{ await rpc({{ action: 'note.set', text: document.getElementById('noteBox').value }}); }}
+    async function loadNote() {{ const res = await rpc({{ action: 'note.get' }}); document.getElementById('noteBox').value = res.text || ''; }}
+    async function pushPcClipboard() {{ await rpc({{ action: 'clipboard.set', text: document.getElementById('noteBox').value }}); }}
+    async function pullPcClipboard() {{ const res = await rpc({{ action: 'clipboard.get' }}); document.getElementById('noteBox').value = res.text || ''; }}
 
     function closeModal() {{ document.getElementById('modalRoot').classList.add('hidden'); }}
     function openTimerModal() {{
@@ -600,13 +789,10 @@ def pwa_html_bytes(authenticated: bool, hostname: str = "My PC", os_name: str = 
       m.classList.remove('hidden');
     }}
     function openUnlockModal() {{
-      if (hostOs === 'linux') {{
-        rpc({{ action: 'unlock.linux' }}).then(() => refreshAll());
-        return;
-      }}
+      if (hostOs === 'linux') {{ rpc({{ action: 'unlock.linux' }}).then(() => refreshAll()); return; }}
       const m = document.getElementById('modalRoot');
       m.innerHTML = `<div class="modal"><div class="card-title">Вход в Windows с iPhone</div>
-        <p class="muted">Для быстрой разблокировки ПК по FaceID установите нативный клиент из <code>pc-phone-remote-ios</code> или используйте RDP / разблокировку.</p>
+        <p class="muted">Для разблокировки Windows по Face ID установите <code>PCPhoneRemote.ipa</code> из GitHub Releases через Sideloadly / AltStore.</p>
         <div style="height:10px;"></div>
         <button class="btn" style="width:100%;" onclick="closeModal()">Понятно</button></div>`;
       m.classList.remove('hidden');

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.database.Cursor
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -46,9 +47,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -60,9 +65,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.delay
@@ -92,6 +99,7 @@ data class DeviceProfileModel(
 
 data class SharedFileItem(val name: String, val size: Long)
 data class ProcessItem(val name: String, val pid: Int, val memMb: Double)
+data class CustomButtonItem(val id: String, val label: String, val icon: String, val kind: String, val target: String)
 data class HistoryItem(val label: String, val ok: Boolean, val time: Long)
 
 data class RemoteThemePalette(
@@ -142,6 +150,8 @@ class MainActivity : ComponentActivity() {
     private val statusesMap = mutableStateMapOf<String, JSONObject>()
     private val sharedFilesMap = mutableStateMapOf<String, List<SharedFileItem>>()
     private val processesMap = mutableStateMapOf<String, List<ProcessItem>>()
+    private val customButtonsMap = mutableStateMapOf<String, List<CustomButtonItem>>()
+    private val brightnessMap = mutableStateMapOf<String, Pair<Boolean, Int>>()
     private var enrollmentRefreshTick by mutableIntStateOf(0)
 
     private var pickerDevice: DeviceProfileModel? = null
@@ -397,6 +407,10 @@ class MainActivity : ComponentActivity() {
             .putString(PREF_PROFILES, arr.toString())
             .putInt(PREF_SELECTED_PROFILE, selectedProfileIndex)
             .apply()
+        try {
+            RemoteWidgetProvider.updateAllWidgets(this)
+        } catch (_: Exception) {
+        }
     }
 
     private fun selectTab(tab: Int) {
@@ -508,6 +522,36 @@ class MainActivity : ComponentActivity() {
                 }
             }
             setBanner(tr("connectionOk"), "success")
+            refreshDisplayStatus(profile)
+            refreshCustomButtons(profile)
+        }
+    }
+
+    private fun refreshDisplayStatus(profile: DeviceProfileModel) {
+        runRpc(profile, JSONObject().put("action", "display.status"), allowConcurrent = true) { res ->
+            val sup = res.optBoolean("supported", false)
+            val pct = if (res.isNull("brightness")) 80 else res.optInt("brightness", 80).coerceIn(0, 100)
+            brightnessMap[profile.id] = Pair(sup, pct)
+        }
+    }
+
+    private fun refreshCustomButtons(profile: DeviceProfileModel) {
+        runRpc(profile, JSONObject().put("action", "deck.custom_list"), allowConcurrent = true) { res ->
+            val arr = res.optJSONArray("buttons") ?: JSONArray()
+            val list = mutableListOf<CustomButtonItem>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                list.add(
+                    CustomButtonItem(
+                        id = obj.optString("id", ""),
+                        label = obj.optString("label", ""),
+                        icon = obj.optString("icon", "⚡"),
+                        kind = obj.optString("kind", "hotkey"),
+                        target = obj.optString("target", "")
+                    )
+                )
+            }
+            customButtonsMap[profile.id] = list
         }
     }
 
@@ -842,6 +886,8 @@ class MainActivity : ComponentActivity() {
         var showPowerModal by remember { mutableStateOf(false) }
         var showRdpConfigModal by remember { mutableStateOf<JSONObject?>(null) }
         var showDevicePickerModal by remember { mutableStateOf(false) }
+        var showScreenLiveModal by remember { mutableStateOf(false) }
+        var showAudioMixerModal by remember { mutableStateOf(false) }
 
         LaunchedEffect(deepLinkEnrollCode) {
             if (deepLinkEnrollCode != null) {
@@ -902,12 +948,14 @@ class MainActivity : ComponentActivity() {
                             onOpenUnlockSheet = { showUnlockSheet = true },
                             onOpenEnrollModal = { showEnrollModal = true },
                             onOpenTimerModal = { showTimerModal = true },
-                            onOpenPowerModal = { showPowerModal = true }
+                            onOpenPowerModal = { showPowerModal = true },
+                            onOpenAudioMixer = { showAudioMixerModal = true }
                         )
                         1 -> StudioProTab(
                             palette = palette,
                             profile = active,
-                            onAddDevice = { showDeviceEditorIndex = -1 }
+                            onAddDevice = { showDeviceEditorIndex = -1 },
+                            onOpenScreenLive = { showScreenLiveModal = true }
                         )
                         2 -> ExchangeTab(
                             palette = palette,
@@ -1038,6 +1086,22 @@ class MainActivity : ComponentActivity() {
                     prefs.edit().putBoolean("onboarding_tour_completed_v2", true).apply()
                     showOnboardingTourState = false
                 }
+            )
+        }
+
+        if (showScreenLiveModal && active != null) {
+            ScreenLiveModal(
+                palette = palette,
+                profile = active,
+                onDismiss = { showScreenLiveModal = false }
+            )
+        }
+
+        if (showAudioMixerModal && active != null) {
+            AudioMixerModal(
+                palette = palette,
+                profile = active,
+                onDismiss = { showAudioMixerModal = false }
             )
         }
     }
@@ -1207,7 +1271,8 @@ class MainActivity : ComponentActivity() {
         onOpenUnlockSheet: () -> Unit,
         onOpenEnrollModal: () -> Unit,
         onOpenTimerModal: () -> Unit,
-        onOpenPowerModal: () -> Unit
+        onOpenPowerModal: () -> Unit,
+        onOpenAudioMixer: () -> Unit
     ) {
         if (profile == null) {
             EmptyDeviceOnboardingCard(
@@ -1524,12 +1589,26 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = tr("media"),
-                        color = palette.textPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = tr("media"),
+                            color = palette.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        TextButton(onClick = onOpenAudioMixer) {
+                            Text(
+                                text = "🎧 " + tr("audioMixerBtn"),
+                                color = palette.accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1595,6 +1674,74 @@ class MainActivity : ComponentActivity() {
                         ) {
                             runRpc(profile, JSONObject().put("action", "media").put("key", "volume_up"), tr("volume_up"))
                         }
+                    }
+                }
+            }
+
+            // Display & Brightness Card
+            val brightEntry = brightnessMap[profile.id]
+            val brightSupported = brightEntry?.first == true
+            var sliderBright by remember(profile.id, brightEntry?.second) {
+                mutableFloatStateOf((brightEntry?.second ?: 80).toFloat())
+            }
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = palette.surface1,
+                border = BorderStroke(1.dp, palette.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = tr("displayCardTitle"),
+                            color = palette.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (brightSupported) {
+                            Text(
+                                text = "${sliderBright.roundToInt()}%",
+                                color = palette.accent,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                    if (brightSupported) {
+                        Slider(
+                            value = sliderBright,
+                            onValueChange = { sliderBright = it },
+                            valueRange = 0f..100f,
+                            onValueChangeFinished = {
+                                val pct = sliderBright.roundToInt()
+                                brightnessMap[profile.id] = Pair(true, pct)
+                                runRpc(
+                                    profile,
+                                    JSONObject().put("action", "display.brightness").put("brightness", pct),
+                                    historyLabel = "${tr("displayCardTitle")} $pct%"
+                                )
+                            }
+                        )
+                    } else {
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            runRpc(profile, JSONObject().put("action", "display.off"), historyLabel = tr("screenOffBtn"))
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "🌑 " + tr("screenOffBtn"),
+                            color = palette.textPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
@@ -1799,7 +1946,8 @@ class MainActivity : ComponentActivity() {
     private fun StudioProTab(
         palette: RemoteThemePalette,
         profile: DeviceProfileModel?,
-        onAddDevice: () -> Unit
+        onAddDevice: () -> Unit,
+        onOpenScreenLive: () -> Unit
     ) {
         if (profile == null) {
             EmptyDeviceOnboardingCard(palette = palette, onAddDevice = onAddDevice, onImportCode = {})
@@ -1825,6 +1973,94 @@ class MainActivity : ComponentActivity() {
                 message = tr("tipStudio"),
                 refreshTick = tipRefreshTick
             )
+
+            // 0. Live Screen View & Tap Button
+            Button(
+                onClick = onOpenScreenLive,
+                colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Text(
+                    text = "🖥 " + tr("screenViewBtn"),
+                    color = Color.White,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // 0b. Live Keyboard & Hotkeys Card
+            var liveKeyText by remember(profile.id) { mutableStateOf("") }
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = palette.surface1,
+                border = BorderStroke(1.dp, palette.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = tr("liveKeyboardTitle"),
+                        color = palette.textPrimary,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = liveKeyText,
+                            onValueChange = { liveKeyText = it },
+                            placeholder = { Text(tr("liveKeyboardHint")) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val sendStr = liveKeyText
+                                if (sendStr.isNotEmpty()) {
+                                    liveKeyText = ""
+                                    runRpc(
+                                        profile,
+                                        JSONObject().put("action", "keyboard.type").put("text", sendStr),
+                                        historyLabel = "⌨ Type"
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(text = tr("send"), color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    val hkList = listOf(
+                        "Alt+Tab" to "alt_tab",
+                        "Win+D" to "win_d",
+                        "Lang" to "switch_lang",
+                        "Ctrl+C" to "ctrl_c",
+                        "Ctrl+V" to "ctrl_v",
+                        "Alt+F4" to "alt_f4",
+                        "Task Mgr" to "ctrl_shift_esc",
+                        "Enter" to "enter",
+                        "Esc" to "esc"
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        hkList.forEach { (hkLabel, hkId) ->
+                            SmallDeckChip(Modifier.widthIn(min = 66.dp), palette, hkLabel) {
+                                runRpc(profile, JSONObject().put("action", "keyboard.hotkey").put("hotkey", hkId), historyLabel = hkLabel)
+                            }
+                        }
+                    }
+                }
+            }
             // 1. One-Tap Scenes (Сценарии в 1 тап)
             Text(
                 text = tr("scenesTitle"),
@@ -2066,6 +2302,39 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val customButtons = customButtonsMap[profile.id] ?: emptyList()
+            if (customButtons.isNotEmpty()) {
+                Text(
+                    text = tr("customButtonsTitle"),
+                    color = palette.textPrimary,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                customButtons.chunked(2).forEach { pairRow ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        pairRow.forEach { btn ->
+                            SmallDeckChip(
+                                modifier = Modifier.weight(1f),
+                                palette = palette,
+                                text = "${btn.icon} ${btn.label}"
+                            ) {
+                                runRpc(
+                                    profile,
+                                    JSONObject().put("action", "deck.custom_run").put("id", btn.id),
+                                    historyLabel = btn.label
+                                )
+                            }
+                        }
+                        if (pairRow.size == 1) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
             // 4. Wake-on-LAN Card
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -2181,6 +2450,35 @@ class MainActivity : ComponentActivity() {
                             fontSize = 12.sp
                         )
                     } else {
+                        var killTarget by remember { mutableStateOf<ProcessItem?>(null) }
+                        if (killTarget != null) {
+                            val target = killTarget!!
+                            AlertDialog(
+                                onDismissRequest = { killTarget = null },
+                                title = { Text(tr("killProcConfirmTitle")) },
+                                text = { Text("${target.name} (PID ${target.pid})") },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            killTarget = null
+                                            runRpc(
+                                                profile,
+                                                JSONObject().put("action", "processes.kill").put("pid", target.pid),
+                                                historyLabel = "${tr("killProcAction")} ${target.name}"
+                                            ) {
+                                                refreshProcesses(profile)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = palette.danger)
+                                    ) {
+                                        Text(tr("killProcAction"), color = Color.White)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { killTarget = null }) { Text(tr("cancel")) }
+                                }
+                            )
+                        }
                         procList.forEach { proc ->
                             Row(
                                 modifier = Modifier
@@ -2209,6 +2507,13 @@ class MainActivity : ComponentActivity() {
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace
                                 )
+                                Spacer(Modifier.width(6.dp))
+                                IconButton(
+                                    onClick = { killTarget = proc },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Text("✕", color = palette.danger, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -2532,6 +2837,60 @@ class MainActivity : ComponentActivity() {
                                 contentDescription = tr("copyText"),
                                 tint = palette.textPrimary,
                                 modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val phoneClip = cm.primaryClip?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString() ?: ""
+                                val payloadText = noteText.ifEmpty { phoneClip }
+                                if (payloadText.isNotEmpty()) {
+                                    runRpc(
+                                        profile,
+                                        JSONObject().put("action", "clipboard.set").put("text", payloadText),
+                                        historyLabel = tr("pcClipboardSend")
+                                    ) {
+                                        setBanner(tr("pcClipboardSynced"), "success")
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "📋 " + tr("pcClipboardSend"),
+                                color = palette.textPrimary,
+                                fontSize = 11.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                runRpc(profile, JSONObject().put("action", "clipboard.get")) { res ->
+                                    val fetched = res.optString("text", "")
+                                    noteText = fetched
+                                    prefs.edit().putString("draft_${profile.id}", fetched).apply()
+                                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    cm.setPrimaryClip(ClipData.newPlainText("PC Clipboard", fetched))
+                                    setBanner(tr("copied"), "success")
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "📥 " + tr("pcClipboardPull"),
+                                color = palette.textPrimary,
+                                fontSize = 11.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -4748,6 +5107,307 @@ class MainActivity : ComponentActivity() {
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun ScreenLiveModal(
+        palette: RemoteThemePalette,
+        profile: DeviceProfileModel,
+        onDismiss: () -> Unit
+    ) {
+        var screenBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+        var monitorsList by remember { mutableStateOf<List<Pair<Int, String>>>(emptyList()) }
+        var selectedMonitor by remember { mutableIntStateOf(0) }
+        var tapButton by remember { mutableStateOf("left") }
+        var autoRefresh by remember { mutableStateOf(false) }
+        var imgSize by remember { mutableStateOf(IntSize(1, 1)) }
+        var statusNote by remember { mutableStateOf("") }
+
+        fun captureScreen() {
+            runRpc(
+                profile,
+                JSONObject()
+                    .put("action", "screen.capture")
+                    .put("monitor", selectedMonitor)
+                    .put("max_width", 960)
+                    .put("quality", 60),
+                allowConcurrent = true
+            ) { res ->
+                val b64 = res.optString("image_b64", "")
+                if (b64.isNotEmpty()) {
+                    val bytes = Base64.decode(b64, Base64.DEFAULT)
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bmp != null) {
+                        screenBitmap = bmp.asImageBitmap()
+                        statusNote = ""
+                    }
+                }
+                val mons = res.optJSONArray("monitors")
+                if (mons != null) {
+                    val parsed = mutableListOf<Pair<Int, String>>()
+                    for (i in 0 until mons.length()) {
+                        val m = mons.optJSONObject(i) ?: continue
+                        val id = m.optInt("id", i)
+                        val lbl = "${m.optString("name", "Display")} (${m.optInt("width")}×${m.optInt("height")})"
+                        parsed.add(Pair(id, lbl))
+                    }
+                    monitorsList = parsed
+                }
+            }
+        }
+
+        LaunchedEffect(profile.id, selectedMonitor) {
+            captureScreen()
+        }
+
+        LaunchedEffect(autoRefresh, selectedMonitor) {
+            while (autoRefresh) {
+                delay(750)
+                captureScreen()
+            }
+        }
+
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = palette.surface1,
+                border = BorderStroke(1.dp, palette.border),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "🖥 " + tr("screenViewBtn"),
+                            color = palette.textPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        TextButton(onClick = onDismiss) { Text("✕", color = palette.textSecondary) }
+                    }
+
+                    if (monitorsList.size > 1) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            monitorsList.forEach { (mid, mname) ->
+                                FilterChip(
+                                    selected = selectedMonitor == mid,
+                                    onClick = { selectedMonitor = mid },
+                                    label = { Text(mname, fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 180.dp, max = 380.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black)
+                            .border(1.dp, palette.border, RoundedCornerShape(14.dp))
+                    ) {
+                        val bmp = screenBitmap
+                        if (bmp != null) {
+                            Image(
+                                bitmap = bmp,
+                                contentDescription = "PC Screen",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onSizeChanged { imgSize = it }
+                                    .pointerInput(selectedMonitor, tapButton) {
+                                        detectTapGestures { offset ->
+                                            val nx = (offset.x / imgSize.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                                            val ny = (offset.y / imgSize.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+                                            runRpc(
+                                                profile,
+                                                JSONObject()
+                                                    .put("action", "screen.tap")
+                                                    .put("nx", nx.toDouble())
+                                                    .put("ny", ny.toDouble())
+                                                    .put("monitor", selectedMonitor)
+                                                    .put("button", tapButton),
+                                                allowConcurrent = true
+                                            ) {
+                                                uiHandler.postDelayed({ captureScreen() }, 250)
+                                            }
+                                        }
+                                    }
+                            )
+                        } else {
+                            Text(
+                                text = statusNote.ifEmpty { tr("sending") },
+                                color = palette.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("left" to tr("screenTapLeft"), "right" to tr("screenTapRight"), "double" to tr("screenTapDouble")).forEach { (id, lbl) ->
+                            val activeBtn = tapButton == id
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (activeBtn) palette.accent else palette.surface2,
+                                modifier = Modifier.weight(1f).clickable { tapButton = id }
+                            ) {
+                                Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Text(lbl, color = if (activeBtn) Color.White else palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = autoRefresh, onCheckedChange = { autoRefresh = it })
+                            Spacer(Modifier.width(6.dp))
+                            Text(tr("screenAutoRefresh"), color = palette.textPrimary, fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = { captureScreen() },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("📸 " + tr("screenCaptureBtn"), color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun AudioMixerModal(
+        palette: RemoteThemePalette,
+        profile: DeviceProfileModel,
+        onDismiss: () -> Unit
+    ) {
+        var devicesList by remember { mutableStateOf<List<Triple<String, String, Boolean>>>(emptyList()) }
+        var sessionsList by remember { mutableStateOf<List<Triple<Int, String, Pair<Int, Boolean>>>>(emptyList()) }
+
+        fun loadAudio() {
+            runRpc(profile, JSONObject().put("action", "audio.list"), allowConcurrent = true) { res ->
+                val devs = res.optJSONArray("devices") ?: JSONArray()
+                val dOut = mutableListOf<Triple<String, String, Boolean>>()
+                for (i in 0 until devs.length()) {
+                    val o = devs.optJSONObject(i) ?: continue
+                    dOut.add(Triple(o.optString("id"), o.optString("name"), o.optBoolean("active", false)))
+                }
+                devicesList = dOut
+
+                val sess = res.optJSONArray("sessions") ?: JSONArray()
+                val sOut = mutableListOf<Triple<Int, String, Pair<Int, Boolean>>>()
+                for (i in 0 until sess.length()) {
+                    val o = sess.optJSONObject(i) ?: continue
+                    sOut.add(Triple(o.optInt("pid"), o.optString("name"), Pair(o.optInt("volume", 100), o.optBoolean("muted", false))))
+                }
+                sessionsList = sOut
+            }
+        }
+
+        LaunchedEffect(profile.id) { loadAudio() }
+
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = palette.surface1,
+                border = BorderStroke(1.dp, palette.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(18.dp)
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("🎧 " + tr("audioMixerBtn"), color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { loadAudio() }) { Text(tr("refresh"), color = palette.accent, fontSize = 12.sp) }
+                    }
+
+                    Text(tr("audioOutputsTitle"), color = palette.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    devicesList.forEach { (did, dname, isActive) ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isActive) palette.accent.copy(alpha = 0.2f) else palette.surface2,
+                            border = BorderStroke(1.dp, if (isActive) palette.accent else palette.border),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                runRpc(profile, JSONObject().put("action", "audio.set_output").put("device_id", did), allowConcurrent = true) {
+                                    loadAudio()
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = (if (isActive) "🔊 " else "🔈 ") + dname,
+                                color = palette.textPrimary,
+                                fontSize = 12.5.sp,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    Text(tr("audioAppsTitle"), color = palette.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    sessionsList.forEach { (pid, name, volPair) ->
+                        var curVol by remember(pid, volPair.first) { mutableFloatStateOf(volPair.first.toFloat()) }
+                        var isMuted by remember(pid, volPair.second) { mutableStateOf(volPair.second) }
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(name, color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    isMuted = !isMuted
+                                    runRpc(profile, JSONObject().put("action", "audio.set_app_volume").put("pid", pid).put("muted", isMuted), allowConcurrent = true)
+                                }) {
+                                    Text("${if (isMuted) "🔇" else "🔊"} ${curVol.roundToInt()}%", fontSize = 12.sp)
+                                }
+                            }
+                            Slider(
+                                value = curVol,
+                                onValueChange = { curVol = it },
+                                valueRange = 0f..100f,
+                                onValueChangeFinished = {
+                                    runRpc(profile, JSONObject().put("action", "audio.set_app_volume").put("pid", pid).put("volume", curVol.roundToInt()), allowConcurrent = true)
+                                }
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.surface2),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(tr("cancel"), color = palette.textPrimary)
                     }
                 }
             }

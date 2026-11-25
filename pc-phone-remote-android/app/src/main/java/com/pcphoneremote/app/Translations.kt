@@ -272,7 +272,26 @@ object Translations {
         "linuxSignInCta" to "Unlock Linux Session",
         "scanQrCameraBtn" to "Scan QR Code on PC",
         "scanQrCameraPrompt" to "Point camera at the QR code in PC Phone Remote",
-        "qrConnectedSuccess" to "PC added via QR code!"
+        "qrConnectedSuccess" to "PC added via QR code!",
+        "screenViewBtn" to "Live Screen & Tap",
+        "screenCaptureBtn" to "Capture",
+        "screenAutoRefresh" to "Auto Refresh",
+        "screenTapLeft" to "Left",
+        "screenTapRight" to "Right",
+        "screenTapDouble" to "Double",
+        "liveKeyboardTitle" to "Live Keyboard & Hotkeys",
+        "liveKeyboardHint" to "Type text into PC window...",
+        "customButtonsTitle" to "My Studio Pro Buttons",
+        "displayCardTitle" to "Display & Brightness",
+        "screenOffBtn" to "Turn Off Screen (No Sleep)",
+        "audioMixerBtn" to "Outputs & App Mixer",
+        "audioOutputsTitle" to "Audio Output Devices",
+        "audioAppsTitle" to "App Volume Mixer",
+        "pcClipboardSend" to "Send to PC Clipboard",
+        "pcClipboardPull" to "Pull PC Clipboard",
+        "pcClipboardSynced" to "PC Clipboard updated",
+        "killProcConfirmTitle" to "Terminate Process?",
+        "killProcAction" to "Terminate"
     )
 
     private val RU = mapOf(
@@ -525,7 +544,26 @@ object Translations {
         "linuxSignInCta" to "Разблокировать сессию Linux",
         "scanQrCameraBtn" to "Сканировать QR-код с ПК",
         "scanQrCameraPrompt" to "Наведите камеру на QR-код в приложении на ПК",
-        "qrConnectedSuccess" to "Компьютер добавлен по QR-коду!"
+        "qrConnectedSuccess" to "Компьютер добавлен по QR-коду!",
+        "screenViewBtn" to "Живой экран и клик",
+        "screenCaptureBtn" to "Снимок",
+        "screenAutoRefresh" to "Автообновление",
+        "screenTapLeft" to "ЛКМ",
+        "screenTapRight" to "ПКМ",
+        "screenTapDouble" to "2× клик",
+        "liveKeyboardTitle" to "Клавиатура и хоткеи ПК",
+        "liveKeyboardHint" to "Текст прямо в окно ПК...",
+        "customButtonsTitle" to "Мои кнопки Studio Pro",
+        "displayCardTitle" to "Экран и яркость",
+        "screenOffBtn" to "Выключить экран (без сна)",
+        "audioMixerBtn" to "Аудиовыходы и микшер",
+        "audioOutputsTitle" to "Устройства вывода звука",
+        "audioAppsTitle" to "Громкость программ",
+        "pcClipboardSend" to "В буфер обмена ПК",
+        "pcClipboardPull" to "Из буфера ПК",
+        "pcClipboardSynced" to "Буфер обмена ПК обновлён",
+        "killProcConfirmTitle" to "Завершить процесс?",
+        "killProcAction" to "Завершить"
     )
 
     private val UK = mapOf(
@@ -778,7 +816,26 @@ object Translations {
         "linuxSignInCta" to "Розблокувати сесію Linux",
         "scanQrCameraBtn" to "Сканувати QR-код з ПК",
         "scanQrCameraPrompt" to "Наведіть камеру на QR-код у програмі на ПК",
-        "qrConnectedSuccess" to "Комп'ютер додано по QR-коду!"
+        "qrConnectedSuccess" to "Комп'ютер додано по QR-коду!",
+        "screenViewBtn" to "Живий екран і клік",
+        "screenCaptureBtn" to "Знімок",
+        "screenAutoRefresh" to "Автооновлення",
+        "screenTapLeft" to "ЛКМ",
+        "screenTapRight" to "ПКМ",
+        "screenTapDouble" to "2× клік",
+        "liveKeyboardTitle" to "Клавіатура та хоткеї ПК",
+        "liveKeyboardHint" to "Текст прямо у вікно ПК...",
+        "customButtonsTitle" to "Мої кнопки Studio Pro",
+        "displayCardTitle" to "Екран і яскравість",
+        "screenOffBtn" to "Вимкнути екран (без сну)",
+        "audioMixerBtn" to "Аудіовиходи та мікшер",
+        "audioOutputsTitle" to "Пристрої виводу звуку",
+        "audioAppsTitle" to "Гучність програм",
+        "pcClipboardSend" to "У буфер обміну ПК",
+        "pcClipboardPull" to "З буфера ПК",
+        "pcClipboardSynced" to "Буфер обміну ПК оновлено",
+        "killProcConfirmTitle" to "Завершити процес?",
+        "killProcAction" to "Завершити"
     )
 
     fun tr(lang: String, key: String): String {

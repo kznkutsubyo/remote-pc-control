@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from http.server import ThreadingHTTPServer
 
 import app
@@ -361,6 +361,163 @@ class LinuxSupportTests(unittest.TestCase):
             self.assertEqual(linux_support.linux_schedule_shutdown(None), {"scheduled": False, "minutes": None})
             self.assertIsNone(linux_support.linux_run_power_command("lock"))
             self.assertIsNone(linux_support.linux_run_power_command("sleep"))
+
+
+class ProFeaturesTests(unittest.TestCase):
+    def test_keyboard_and_hotkey_validation(self):
+        comp = Companion({"pin": "1234", "share_dir": tempfile.mkdtemp(prefix="pcr-key-")})
+        with patch.object(Companion, "session_locked", return_value=False):
+            with self.assertRaises(FeatureError) as bad_hk:
+                comp.dispatch({"action": "keyboard.hotkey", "hotkey": "rm_rf"})
+            self.assertEqual(bad_hk.exception.status, 400)
+
+            with self.assertRaises(FeatureError) as empty_txt:
+                comp.dispatch({"action": "keyboard.type", "text": ""})
+            self.assertEqual(empty_txt.exception.status, 400)
+
+            with patch("companion.type_unicode_text", return_value={"sent": True, "length": 6}) as m_type:
+                res = comp.dispatch({"action": "keyboard.type", "text": "Привет"})
+                self.assertEqual(res, {"sent": True, "length": 6})
+                m_type.assert_called_once()
+
+            with patch("companion.send_hotkey", return_value={"sent": True, "hotkey": "alt_tab"}) as m_hk:
+                res = comp.dispatch({"action": "keyboard.hotkey", "hotkey": "alt_tab"})
+                self.assertEqual(res, {"sent": True, "hotkey": "alt_tab"})
+                m_hk.assert_called_once()
+
+        with patch.object(Companion, "session_locked", return_value=True):
+            with self.assertRaises(FeatureError) as locked_exc:
+                comp.dispatch({"action": "screen.capture"})
+            self.assertEqual(locked_exc.exception.status, 409)
+
+    def test_clipboard_audio_display_and_screen_dispatch(self):
+        comp = Companion({"pin": "1234", "share_dir": tempfile.mkdtemp(prefix="pcr-pro-")})
+        with patch.object(Companion, "session_locked", return_value=False):
+            with patch("companion.get_clipboard_text", return_value="hello clip"):
+                self.assertEqual(comp.dispatch({"action": "clipboard.get"}), {"text": "hello clip"})
+            with patch("companion.set_clipboard_text", return_value={"saved": True, "length": 3}) as m_set:
+                self.assertEqual(comp.dispatch({"action": "clipboard.set", "text": "abc"}), {"saved": True, "length": 3})
+                m_set.assert_called_once_with("abc")
+
+            with patch("companion.capture_screen_jpeg", return_value=(b"\xff\xd8jpg", 640, 360, [{"id": 0, "name": "Monitor 1", "width": 1920, "height": 1080}])):
+                cap = comp.dispatch({"action": "screen.capture", "monitor": 0})
+                self.assertEqual(cap["mime"], "image/jpeg")
+                self.assertEqual(cap["width"], 640)
+                self.assertEqual(base64.b64decode(cap["image_b64"]), b"\xff\xd8jpg")
+
+            with patch("companion.tap_screen", return_value={"sent": True, "x": 100, "y": 200, "button": "left", "monitor": 0}) as m_tap:
+                res = comp.dispatch({"action": "screen.tap", "nx": 0.25, "ny": 0.5, "monitor": 0, "button": "left"})
+                self.assertTrue(res["sent"])
+                m_tap.assert_called_once()
+
+            with patch("companion.list_audio_state", return_value={"devices": [{"id": "d1", "name": "Headset", "active": True}], "sessions": []}):
+                self.assertEqual(comp.dispatch({"action": "audio.list"})["devices"][0]["id"], "d1")
+            with patch("companion.set_audio_output", return_value={"switched": True, "device_id": "d1"}):
+                self.assertTrue(comp.dispatch({"action": "audio.set_output", "device_id": "d1"})["switched"])
+            with patch("companion.set_app_audio_volume", return_value={"updated": True, "pid": 4321, "volume": 50, "muted": False}):
+                self.assertEqual(comp.dispatch({"action": "audio.set_app_volume", "pid": 4321, "volume": 50})["volume"], 50)
+
+            with patch("companion.get_display_brightness", return_value={"supported": True, "brightness": 75, "method": "ddc"}):
+                self.assertEqual(comp.dispatch({"action": "display.status"})["brightness"], 75)
+            with patch("companion.set_display_brightness", return_value={"updated": True, "brightness": 60}):
+                self.assertEqual(comp.dispatch({"action": "display.brightness", "brightness": 60})["brightness"], 60)
+            with patch("companion.turn_display_off", return_value={"sent": True, "display_off": True}):
+                self.assertTrue(comp.dispatch({"action": "display.off"})["display_off"])
+
+    def test_protected_process_kill_and_custom_buttons(self):
+        import pro_features
+        for pid in (0, 4, os.getpid()):
+            with self.assertRaises(ValueError):
+                pro_features.kill_process_safe(pid)
+
+        fake_proc = Mock()
+        fake_proc.name.return_value = "csrss.exe"
+        with patch("pro_features.psutil.Process", return_value=fake_proc):
+            with self.assertRaises(PermissionError):
+                pro_features.kill_process_safe(12345)
+
+        buttons = pro_features.sanitize_custom_buttons([
+            {"id": "b1", "label": "Good", "icon": "🌐", "kind": "url", "target": "https://example.com"},
+            {"id": "bad_js", "label": "Bad", "icon": "!", "kind": "url", "target": "javascript:alert(1)"},
+            {"id": "bad_hk", "label": "BadHK", "icon": "!", "kind": "hotkey", "target": "unknown_combo"},
+        ])
+        self.assertEqual(len(buttons), 1)
+        self.assertEqual(buttons[0]["id"], "b1")
+
+        comp = Companion({"pin": "1234", "share_dir": tempfile.mkdtemp(prefix="pcr-cb-"), "custom_buttons": buttons})
+        with patch.object(Companion, "session_locked", return_value=False):
+            listed = comp.dispatch({"action": "deck.custom_list"})
+            self.assertEqual(len(listed["buttons"]), 1)
+            with patch("companion.run_custom_button", return_value={"sent": True, "id": "b1"}) as m_run:
+                ran = comp.dispatch({"action": "deck.custom_run", "id": "b1"})
+                self.assertTrue(ran["sent"])
+                m_run.assert_called_once()
+
+    def test_tls_san_builder_wol_diag_and_updates(self):
+        import tls_helper, pro_features
+        sans = tls_helper._build_san_entries(["192.168.1.50", "not-an-ip", "127.0.0.1"])
+        self.assertEqual(sans, ["DNS:localhost", "IP:127.0.0.1", "IP:192.168.1.50"])
+
+        fake_resp = Mock()
+        fake_resp.read.return_value = json.dumps({
+            "tag_name": "v2.9.0",
+            "html_url": "https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.9.0",
+            "assets": [{"name": "PCPhoneRemote-Setup.exe", "browser_download_url": "https://example.com/setup.exe"}],
+            "body": "Notes",
+        }).encode("utf-8")
+        fake_cm = MagicMock()
+        fake_cm.__enter__.return_value = fake_resp
+        with patch("pro_features.urllib.request.urlopen", return_value=fake_cm):
+            upd = pro_features.check_github_updates(current_version="2.4.0")
+            self.assertTrue(upd["ok"])
+            self.assertTrue(upd["update_available"])
+            self.assertEqual(upd["latest_version"], "2.9.0")
+
+
+class ProHttpTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler)
+        self.server.pin = "test-access"
+        self.server.https_enabled = False
+        self.server.config_path = Path(self.temp.name) / "config.json"
+        self.server.companion = Companion({"pin": "test-access", "share_dir": self.temp.name})
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.temp.cleanup()
+
+    def test_screen_mjpg_auth_and_admin_pro_fields(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=4)
+        conn.request("GET", "/api/screen.mjpg")
+        r = conn.getresponse()
+        r.read()
+        self.assertEqual(r.status, 401)
+        conn.close()
+
+        conn2 = http.client.HTTPConnection("127.0.0.1", self.port, timeout=4)
+        conn2.request("GET", "/api/local/admin")
+        r2 = conn2.getresponse()
+        admin_data = json.loads(r2.read().decode("utf-8"))
+        self.assertEqual(r2.status, 200)
+        self.assertEqual(admin_data["app_version"], "2.4.0")
+        self.assertIn("custom_buttons", admin_data)
+        self.assertIn("tls", admin_data)
+        conn2.close()
+
+        conn3 = http.client.HTTPConnection("127.0.0.1", self.port, timeout=4)
+        body = json.dumps({"action": "custom_buttons_save", "buttons": [{"id": "yt", "label": "YouTube", "icon": "▶", "kind": "url", "target": "https://youtube.com"}]}).encode("utf-8")
+        conn3.request("POST", "/api/local/admin", body, {"Content-Type": "application/json", "X-Local-Admin": app.LOCAL_ADMIN_TOKEN})
+        r3 = conn3.getresponse()
+        resp3 = json.loads(r3.read().decode("utf-8"))
+        self.assertEqual(r3.status, 200)
+        self.assertEqual(len(resp3["buttons"]), 1)
+        conn3.close()
 
 
 if __name__ == "__main__":

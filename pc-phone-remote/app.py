@@ -34,6 +34,22 @@ from companion import (
 from desktop_ui import desktop_html_bytes
 from ios_pwa import pwa_html_bytes, pwa_manifest_bytes, pwa_service_worker_bytes
 from linux_support import linux_run_power_command
+from pro_features import (
+    APP_VERSION,
+    HOTKEYS,
+    autofix_wol_windows,
+    capture_screen_jpeg,
+    check_github_updates,
+    diagnose_wol,
+    sanitize_custom_buttons,
+    run_custom_button,
+)
+from tls_helper import (
+    CERT_FILE,
+    ensure_local_tls_cert,
+    tls_status_snapshot,
+    wrap_server_ssl,
+)
 from unlock_ipc import pipe_transact
 
 try:
@@ -360,6 +376,7 @@ def local_admin_snapshot(server, port: int) -> dict:
 
     return {
         "ok": True,
+        "app_version": APP_VERSION,
         "os": "windows" if os.name == "nt" else "linux",
         "hostname": hostname,
         "port": port,
@@ -382,6 +399,11 @@ def local_admin_snapshot(server, port: int) -> dict:
         "last_client_seen": last_seen,
         "files": files,
         "note": note_text,
+        "custom_buttons": sanitize_custom_buttons(cfg.get("custom_buttons")),
+        "hotkeys": sorted(HOTKEYS.keys()),
+        "https_enabled": bool(cfg.get("https_enabled", False)),
+        "tls_active": bool(getattr(server, "https_enabled", False)),
+        "tls": tls_status_snapshot(),
         "server_uptime_sec": max(0, int(time.time() - SERVER_START_TIME)),
     }
 
@@ -509,6 +531,58 @@ def handle_local_admin_action(server, port: int, payload: dict) -> dict:
     if action == "note_set":
         return {"ok": True, **comp.dispatch({"action": "note.set", "text": str(payload.get("text") or "")})}
 
+    if action == "custom_buttons_save":
+        buttons = sanitize_custom_buttons(payload.get("buttons"))
+        cfg = json.loads(cfg_path.read_text("utf-8")) if cfg_path.exists() else {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg["custom_buttons"] = buttons
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cfg_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
+        tmp.replace(cfg_path)
+        comp.config["custom_buttons"] = buttons
+        return {"ok": True, "buttons": buttons, "message": "✅ Кнопки Studio Pro сохранены"}
+
+    if action == "custom_button_test":
+        bid = str(payload.get("id") or "").strip()
+        buttons = sanitize_custom_buttons(comp.config.get("custom_buttons"))
+        btn = next((b for b in buttons if b["id"] == bid), None)
+        if not btn:
+            return {"ok": False, "error": "Сначала сохраните кнопку"}
+        run_custom_button(btn, run_desktop_fn=run_on_input_desktop)
+        return {"ok": True, "message": f"▶ Выполнено: {btn['label']}"}
+
+    if action == "wol_diagnose":
+        return diagnose_wol()
+
+    if action == "wol_autofix":
+        return autofix_wol_windows()
+
+    if action == "check_updates":
+        return check_github_updates()
+
+    if action == "tls_toggle":
+        enable = bool(payload.get("enabled"))
+        regen = bool(payload.get("regen"))
+        if enable or regen:
+            ensure_local_tls_cert(ordered_lan_ips(port), force_regen=regen)
+        cfg = json.loads(cfg_path.read_text("utf-8")) if cfg_path.exists() else {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg["https_enabled"] = enable
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cfg_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
+        tmp.replace(cfg_path)
+        comp.config["https_enabled"] = enable
+        return {
+            "ok": True,
+            "https_enabled": enable,
+            "tls": tls_status_snapshot(),
+            "message": "✅ HTTPS включён — перезапустите сервер" if enable else "HTTP режим сохранён — перезапустите сервер",
+        }
+
     if action == "restart_server":
         def _restart() -> None:
             time.sleep(0.35)
@@ -566,13 +640,14 @@ def enable_shutdown_privilege() -> bool:
         return False
 
 
-def discovery_payload(http_port: int = 8765) -> dict:
+def discovery_payload(http_port: int = 8765, https_enabled: bool = False) -> dict:
     """Return LAN discovery metadata JSON for automatic phone scanning."""
     parsed = urlparse(preferred_host(http_port))
     return {
         "ok": True,
         "service": "pc-phone-remote",
-        "version": "2.1",
+        "version": APP_VERSION,
+        "https": bool(https_enabled),
         "name": socket.gethostname() or "My PC",
         "host": parsed.hostname or "",
         "port": int(parsed.port or http_port),
@@ -581,7 +656,7 @@ def discovery_payload(http_port: int = 8765) -> dict:
     }
 
 
-def start_udp_discovery_listener(http_port: int = 8765, udp_port: int = 8766) -> threading.Thread:
+def start_udp_discovery_listener(http_port: int = 8765, udp_port: int = 8766, https_enabled: bool = False) -> threading.Thread:
     """Start a background daemon listening for UDP LAN discovery probes."""
     def _serve_udp() -> None:
         try:
@@ -594,7 +669,7 @@ def start_udp_discovery_listener(http_port: int = 8765, udp_port: int = 8766) ->
                     except OSError:
                         break
                     if data.startswith(b"PCPHONE_DISCOVER"):
-                        payload = json.dumps(discovery_payload(http_port)).encode("utf-8")
+                        payload = json.dumps(discovery_payload(http_port, https_enabled=https_enabled)).encode("utf-8")
                         try:
                             sock.sendto(payload, addr)
                         except OSError:
@@ -1070,7 +1145,62 @@ class RemoteHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/discover":
             self._record_client_seen("/api/discover")
-            self.send_json(200, discovery_payload(self.port))
+            self.send_json(200, discovery_payload(self.port, https_enabled=bool(getattr(self.server, "https_enabled", False))))
+            return
+
+        if parsed.path == "/api/local/cert":
+            if not CERT_FILE.exists():
+                self.send_json(404, {"message": "HTTPS certificate not generated yet"})
+                return
+            cert_data = CERT_FILE.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-x509-ca-cert")
+            self.send_header("Content-Disposition", 'attachment; filename="pc-phone-remote-local.crt"')
+            self.send_header("Content-Length", str(len(cert_data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(cert_data)
+            return
+
+        if parsed.path == "/api/screen.mjpg":
+            if not self.is_authenticated():
+                self.send_json(401, {"message": "Not authenticated"})
+                return
+            comp: Companion = self.server.companion
+            if comp.session_locked() is True:
+                self.send_json(409, {"message": "Screen stream requires an unlocked session"})
+                return
+            qs = parse_qs(parsed.query)
+            try:
+                mon = max(0, min(7, int(qs.get("monitor", ["0"])[0] or 0)))
+                fps = max(1, min(5, int(qs.get("fps", ["3"])[0] or 3)))
+                qual = max(30, min(80, int(qs.get("q", ["55"])[0] or 55)))
+                width = max(480, min(1280, int(qs.get("w", ["900"])[0] or 900)))
+            except ValueError:
+                mon, fps, qual, width = 0, 3, 55, 900
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+            interval = 1.0 / fps
+            try:
+                while True:
+                    if comp.session_locked() is True:
+                        break
+                    jpeg, _, _, _ = capture_screen_jpeg(mon, max_width=width, quality=qual)
+                    header = (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n"
+                        + f"Content-Length: {len(jpeg)}\r\n\r\n".encode("ascii")
+                    )
+                    self.wfile.write(header + jpeg + b"\r\n")
+                    self.wfile.flush()
+                    time.sleep(interval)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass
+            except Exception:
+                pass
             return
 
         if parsed.path == "/app":
@@ -1236,6 +1366,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default=os.environ.get("REMOTE_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("REMOTE_PORT", "8765")))
     parser.add_argument("--pin", default=os.environ.get("REMOTE_PIN", DEFAULT_PIN))
+    parser.add_argument("--https", action="store_true", help="Enable local self-signed HTTPS")
     return parser.parse_args()
 
 
@@ -1270,20 +1401,30 @@ def main() -> int:
     cfg_file = Path(__file__).with_name("config.json")
     config = load_config(cfg_file)
     server = ThreadingHTTPServer((args.host, args.port), RemoteHandler)
+    server.https_enabled = False  # type: ignore[attr-defined]
+    use_https = bool(args.https or config.get("https_enabled"))
+    if use_https:
+        try:
+            cert_p, key_p = ensure_local_tls_cert(ordered_lan_ips(args.port))
+            wrap_server_ssl(server, cert_p, key_p)
+            server.https_enabled = True  # type: ignore[attr-defined]
+        except Exception as exc:
+            print(f"WARNING: Could not enable HTTPS ({exc}); falling back to HTTP.")
     server.pin = args.pin or str(config.get("pin", ""))  # type: ignore[attr-defined]
     if not args.pin:
         server.config_path = cfg_file  # type: ignore[attr-defined]
     server.companion = Companion(config, run_command)
-    start_udp_discovery_listener(args.port)
+    start_udp_discovery_listener(args.port, https_enabled=bool(server.https_enabled))
 
-    print(f"{APP_NAME} is running ({'Windows' if os.name == 'nt' else 'Linux'}).")
+    scheme = "https" if server.https_enabled else "http"
+    print(f"{APP_NAME} v{APP_VERSION} is running ({'Windows' if os.name == 'nt' else 'Linux'}, {scheme.upper()}).")
     if server.pin:
         print("PIN is configured.")
     else:
         print("WARNING: no PIN is configured. Set REMOTE_PIN before real use.")
     print("Open one of these addresses on your phone (or iPhone Safari /app) while connected to the same Wi-Fi:")
     for address in local_addresses(args.port):
-        print(f"  {address}/app")
+        print(f"  {address.replace('http://', scheme + '://')}/app")
     print("Press Ctrl+C to stop.")
 
     try:

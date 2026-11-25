@@ -2,9 +2,9 @@
 
 **Your computer, within reach of your phone.**
 
-A personal remote for Windows and Linux: power, media, touchpad, shared files and PC status. Version **2.3.1** adds a prebuilt unsigned iOS `.ipa` for Windows/macOS sideloading, an iPhone browser interface, desktop control center, QR pairing, LAN discovery, and native installers.
+A personal remote for Windows and Linux: power, media, live screen view & tap, Unicode keyboard, OS clipboard sync, per-app audio mixer, display brightness/screen-off, touchpad, custom buttons, shared files, WoL diagnostics, optional local HTTPS, iOS QR scanner & Siri Shortcuts, and Android Quick Settings Tiles & Widget.
 
-[Download 2.3.1](https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.3.1) · [Relay package](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay) · [Security](SECURITY.md) · [MIT License](LICENSE)
+[Download 2.4.0](https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.4.0) · [Relay package](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay) · [Security](SECURITY.md) · [MIT License](LICENSE)
 
 ## Preview
 
@@ -49,13 +49,13 @@ Get files from [Releases](https://github.com/kznkutsubyo/remote-pc-control/relea
 
 | File | Purpose |
 | --- | --- |
-| PCPhoneRemote-v2.3.1.apk | Android app |
-| PCPhoneRemote-v2.3.1.ipa | Native iOS app (unsigned arm64 IPA for sideloading via Sideloadly / AltStore / TrollStore) |
+| PCPhoneRemote-v2.4.0.apk | Android app (with Quick Settings Tiles & Widget) |
+| PCPhoneRemote-v2.4.0.ipa | Native iOS app (unsigned arm64 IPA with QR scanner & Siri Shortcuts) |
 | PCPhoneRemote-Setup.exe | Windows installer and launcher |
 | PCPhoneRemote-Linux-Installer.run | Linux installer |
-| PCPhoneRemote-Windows-v2.3.1.zip | Portable Windows sources and native x64 sign-in binaries |
-| PCPhoneRemote-Relay-v2.3.1.zip | Self-hosted relay sources |
-| PCPhoneRemote-iOS-Source-v2.3.1.zip | SwiftUI sources and Xcode build instructions |
+| PCPhoneRemote-Windows-v2.4.0.zip | Portable Windows sources and native x64 sign-in binaries |
+| PCPhoneRemote-Relay-v2.4.0.zip | Self-hosted relay sources |
+| PCPhoneRemote-iOS-Source-v2.4.0.zip | SwiftUI sources and Xcode build instructions |
 | SHA256SUMS.txt | Download checksums |
 
 The APK uses a development signing key. Windows executables are unsigned. The Windows launcher wraps Python; Python is a prerequisite, not a bundled runtime.
@@ -103,7 +103,7 @@ The PC address must be reachable. On a phone, 127.0.0.1 refers to the phone itse
 
 1. **Instant Safari PWA (no extra tools):** Open `http://<your-pc-address>:8765/app` in Safari (or scan the **iPhone / Web PWA** QR code from the desktop control center), sign in using the server PIN, then tap **Share → Add to Home Screen**.
    Service-worker/full PWA behavior requires a secure browser context (HTTPS). LAN HTTP provides the basic browser UI. The relay API does not serve `/app`.
-2. **Native iOS App via `.ipa` Sideloading (no Mac needed):** Download `PCPhoneRemote-v2.3.1.ipa` from [Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest) and install it onto your iPhone/iPad from Windows or macOS using **Sideloadly**, **AltStore / SideStore**, or **TrollStore** (on eligible iOS builds). For full step-by-step instructions or Xcode source builds, see the [iOS guide](pc-phone-remote-ios/README.md).
+2. **Native iOS App via `.ipa` Sideloading (no Mac needed):** Download `PCPhoneRemote-v2.4.0.ipa` from [Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest) and install it onto your iPhone/iPad from Windows or macOS using **Sideloadly**, **AltStore / SideStore**, or **TrollStore** (on eligible iOS builds). For full step-by-step instructions or Xcode source builds, see the [iOS guide](pc-phone-remote-ios/README.md).
 
 ## Files And Text
 
@@ -119,7 +119,7 @@ Native phone client → HTTPS relay → outgoing PC agent → computer
 
 Use a trusted HTTPS host, unique RELAY_PIN and random RELAY_AGENT_TOKEN of at least 24 characters. Update relay and agent together; one relay instance serves one PC.
 
-Container: **ghcr.io/kznkutsubyo/remote-pc-control-relay:2.3.1**.
+Container: **ghcr.io/kznkutsubyo/remote-pc-control-relay:2.4.0**.
 
 Configure credentials at deployment time. Regular files/text are buffered by the relay and are not end-to-end encrypted against it. Native Windows sign-in requests have their own encrypted protocol. See [relay setup](pc-phone-remote/README_REMOTE.md).
 
@@ -146,7 +146,7 @@ cd ..\pc-phone-remote-android
 .\gradlew.bat assembleRelease lintDebug
 cd ..
 powershell -NoProfile -ExecutionPolicy Bypass -File windows-unlock\build.ps1 -RunTests
-powershell -NoProfile -File tools\package_release.ps1 -Version 2.3.1
+powershell -NoProfile -File tools\package_release.ps1 -Version 2.4.0
 ~~~
 
 The tag workflow checks server tests, native Windows tests, Android release, Linux installer syntax, relay startup and the unsigned `arm64` iOS `.ipa` build. It then publishes Release downloads and the GHCR package. These checks do not replace physical-device and desktop-session testing.

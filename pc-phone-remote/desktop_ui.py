@@ -201,7 +201,7 @@ def desktop_html_bytes(admin_token: str = "") -> bytes:
   /* Navigation Tabs */
   .nav-tabs {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 10px;
     margin-bottom: 18px;
   }
@@ -637,6 +637,8 @@ def desktop_html_bytes(admin_token: str = "") -> bytes:
       </div>
     </div>
     <div class="header-right">
+      <span class="badge" id="verBadge" style="background:rgba(129,140,248,0.16);border:1px solid rgba(129,140,248,0.4);color:#c7d2fe">v2.4.0</span>
+      <button class="btn" style="padding:7px 11px;font-size:12px" onclick="checkUpdates()">🔄 <span data-i18n="checkUpdShort">Обновления</span></button>
       <div class="status-chip">
         <span class="dot-live"></span>
         <span id="serverStatusText">Сервер активен</span>
@@ -651,8 +653,9 @@ def desktop_html_bytes(admin_token: str = "") -> bytes:
 
   <nav class="nav-tabs">
     <button class="nav-tab active" data-tab="qr" onclick="switchTab('qr')">📱 <span data-i18n="tabQr">QR-подключение</span></button>
-    <button class="nav-tab" data-tab="settings" onclick="switchTab('settings')">🛡️ <span data-i18n="tabSettings">Настройки и Безопасность</span></button>
-    <button class="nav-tab" data-tab="unlock" onclick="switchTab('unlock')">🔓 <span data-i18n="tabUnlock">Вход с экрана блокировки</span></button>
+    <button class="nav-tab" data-tab="settings" onclick="switchTab('settings')">🛡️ <span data-i18n="tabSettings">Настройки и Сеть</span></button>
+    <button class="nav-tab" data-tab="unlock" onclick="switchTab('unlock')">🔓 <span data-i18n="tabUnlock">Вход с экрана</span></button>
+    <button class="nav-tab" data-tab="pro" onclick="switchTab('pro')">🎨 <span data-i18n="tabPro">Studio Pro и WoL</span></button>
     <button class="nav-tab" data-tab="files" onclick="switchTab('files')">📁 <span data-i18n="tabFiles">Файлы и Сервер</span></button>
   </nav>
 
@@ -815,6 +818,17 @@ def desktop_html_bytes(admin_token: str = "") -> bytes:
           </div>
           <span class="badge badge-ok">WOL UDP 9</span>
         </div>
+
+        <div class="toggle-row">
+          <div>
+            <div style="font-weight:700;font-size:14px" data-i18n="tlsTitle">Локальный HTTPS (PWA + Шифрование)</div>
+            <div class="muted" id="tlsSubText" style="font-size:12px">Включает Service Worker в Safari PWA и шифрует трафик</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+            <button class="btn" id="tlsToggleBtn" onclick="toggleTls(false)">...</button>
+            <a class="btn" id="tlsCertLink" href="/api/local/cert" download="pc-phone-remote-local.crt" style="text-decoration:none;display:none">📜 .crt</a>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -886,6 +900,69 @@ def desktop_html_bytes(admin_token: str = "") -> bytes:
     </div>
   </section>
 
+  <!-- TAB PRO: Studio Builder, WoL Diagnostics & Updates -->
+  <section class="tab-panel" id="tab-pro">
+    <div class="grid-2">
+      <div class="card">
+        <h2 data-i18n="builderTitle">Конструктор кнопок Studio Pro</h2>
+        <div class="muted" style="margin-bottom:12px" data-i18n="builderDesc">Создайте свои кнопки быстрого запуска программ, сайтов и горячих клавиш — они сразу появятся на iPhone, Android и в Web PWA.</div>
+
+        <div class="file-list" id="customButtonsList" style="max-height:210px;margin-bottom:14px"></div>
+
+        <div class="grid-form-2">
+          <div class="field">
+            <label>Иконка + Название</label>
+            <div class="input-group">
+              <input class="input" id="cbIcon" value="🚀" style="max-width:56px;text-align:center">
+              <input class="input" id="cbLabel" placeholder="Напр. YouTube / OBS">
+            </div>
+          </div>
+          <div class="field">
+            <label>Тип действия</label>
+            <select class="input" id="cbKind" onchange="onCustomKindChange()">
+              <option value="url">🌐 Открыть сайт (URL)</option>
+              <option value="app">🖥 Программа / Путь</option>
+              <option value="hotkey">⌨ Горячая клавиша</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" id="cbTargetTextWrap">
+          <label id="cbTargetLabel">URL или путь на ПК</label>
+          <input class="input" id="cbTarget" placeholder="https://youtube.com или C:\\Program Files\\...">
+        </div>
+        <div class="field" id="cbHotkeyWrap" style="display:none">
+          <label>Выберите комбинацию клавиш</label>
+          <select class="input" id="cbHotkeySelect"></select>
+        </div>
+
+        <button class="btn btn-primary" onclick="addCustomButton()">➕ <span data-i18n="addCustomBtn">Добавить кнопку</span></button>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="wolDiagTitle">Диагностика Wake-on-LAN и Обновления</h2>
+        <div class="muted" style="margin-bottom:12px" data-i18n="wolDiagDesc">Проверьте готовность сетевой карты и Windows к пробуждению компьютера по сети.</div>
+
+        <div class="btn-row" style="margin-top:0;margin-bottom:12px">
+          <button class="btn btn-primary" onclick="diagnoseWol()">⚡ <span data-i18n="runWolDiagBtn">Проверить WoL</span></button>
+          <button class="btn btn-success" id="wolAutofixBtn" onclick="autofixWol()">🛠 <span data-i18n="autofixWolBtn">Авто-исправление (UAC)</span></button>
+        </div>
+
+        <div id="wolChecksWrap" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+          <div class="muted">Нажмите «Проверить WoL», чтобы проанализировать сетевой адаптер и Fast Startup.</div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+            <div style="font-weight:700;font-size:15px" data-i18n="updTitle">Обновления PC Phone Remote</div>
+            <button class="btn" onclick="checkUpdates()">🔄 <span data-i18n="checkUpdBtn">Проверить GitHub</span></button>
+          </div>
+          <div class="muted" id="updStatusText">Нажмите «Проверить GitHub» для поиска новых релизов.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- TAB 4: Files & Server -->
   <section class="tab-panel" id="tab-files">
     <div class="grid-2">
@@ -918,9 +995,21 @@ const ADMIN_TOKEN = """ + token_js + """;
 const I18N = {
   ru: {
     tabQr: "QR-подключение",
-    tabSettings: "Настройки и Безопасность",
-    tabUnlock: "Вход с экрана блокировки",
+    tabSettings: "Настройки и Сеть",
+    tabUnlock: "Вход с экрана",
+    tabPro: "Studio Pro и WoL",
     tabFiles: "Файлы и Сервер",
+    checkUpdShort: "Обновления",
+    tlsTitle: "Локальный HTTPS (PWA + Шифрование)",
+    builderTitle: "Конструктор кнопок Studio Pro",
+    builderDesc: "Создайте свои кнопки запуска сайтов, программ и горячих клавиш — они сразу появятся на iPhone, Android и в Web PWA.",
+    addCustomBtn: "Добавить кнопку",
+    wolDiagTitle: "Диагностика Wake-on-LAN и Обновления",
+    wolDiagDesc: "Проверьте готовность сетевой карты и Windows к пробуждению компьютера по сети.",
+    runWolDiagBtn: "Проверить WoL",
+    autofixWolBtn: "Авто-исправление (UAC)",
+    updTitle: "Обновления PC Phone Remote",
+    checkUpdBtn: "Проверить GitHub",
     qrTitle: "Подключение телефона по QR-коду",
     qrDesc: "Откройте приложение на телефоне и нажмите «Сканировать QR» — компьютер и PIN добавятся мгновенно без ручного ввода IP.",
     selectIpHint: "Локальный IP-адрес компьютера (выберите вашу Wi-Fi / LAN сеть):",
@@ -961,9 +1050,21 @@ const I18N = {
   },
   en: {
     tabQr: "QR Pairing",
-    tabSettings: "Settings & Security",
+    tabSettings: "Settings & Network",
     tabUnlock: "Lock Screen Unlock",
+    tabPro: "Studio Pro & WoL",
     tabFiles: "Files & Server",
+    checkUpdShort: "Updates",
+    tlsTitle: "Local HTTPS (PWA + Encryption)",
+    builderTitle: "Studio Pro Custom Buttons",
+    builderDesc: "Create custom buttons for websites, PC apps, or hotkeys — synced to iPhone, Android, and Web PWA.",
+    addCustomBtn: "Add Button",
+    wolDiagTitle: "Wake-on-LAN Diagnostics & Updates",
+    wolDiagDesc: "Check network adapter WoL readiness and Windows Fast Startup state.",
+    runWolDiagBtn: "Run WoL Check",
+    autofixWolBtn: "Auto-Fix (UAC)",
+    updTitle: "PC Phone Remote Updates",
+    checkUpdBtn: "Check GitHub",
     qrTitle: "Connect Phone via QR Code",
     qrDesc: "Open the phone app and tap Scan QR — PC host, port and PIN import automatically.",
     selectIpHint: "PC Local IP Address (pick your Wi-Fi / LAN adapter):",
@@ -1004,9 +1105,21 @@ const I18N = {
   },
   uk: {
     tabQr: "QR-підключення",
-    tabSettings: "Налаштування та Безпека",
-    tabUnlock: "Вхід з екрана блокування",
+    tabSettings: "Налаштування та Мережа",
+    tabUnlock: "Вхід з екрана",
+    tabPro: "Studio Pro і WoL",
     tabFiles: "Файли та Сервер",
+    checkUpdShort: "Оновлення",
+    tlsTitle: "Локальний HTTPS (PWA + Шифрування)",
+    builderTitle: "Конструктор кнопок Studio Pro",
+    builderDesc: "Створіть власні кнопки запуску сайтів, програм та гарячих клавіш для iPhone, Android і Web PWA.",
+    addCustomBtn: "Додати кнопку",
+    wolDiagTitle: "Діагностика Wake-on-LAN та Оновлення",
+    wolDiagDesc: "Перевірте готовність мережевої карти й Windows до пробудження по мережі.",
+    runWolDiagBtn: "Перевірити WoL",
+    autofixWolBtn: "Авто-виправлення (UAC)",
+    updTitle: "Оновлення PC Phone Remote",
+    checkUpdBtn: "Перевірити GitHub",
     qrTitle: "Підключення телефону по QR-коду",
     qrDesc: "Відкрийте додаток на телефоні та натисніть «Сканувати QR» — ПК і PIN додадуться миттєво.",
     selectIpHint: "Локальний IP комп'ютера (оберіть вашу Wi-Fi / LAN мережу):",
@@ -1107,10 +1220,12 @@ function buildActiveQrData() {
   const pin = stateData.pin || '';
   const name = encodeURIComponent(stateData.hostname || 'My PC');
   const mac = encodeURIComponent(stateData.mac || '');
+  const scheme = stateData.tls_active ? 'https' : 'http';
   if (qrMode === 'ios') {
-    return `http://${host}:${port}/app?name=${name}&host=${encodeURIComponent(host)}&port=${port}&pin=${encodeURIComponent(pin)}`;
+    return `${scheme}://${host}:${port}/app?name=${name}&host=${encodeURIComponent(host)}&port=${port}&pin=${encodeURIComponent(pin)}`;
   }
-  return `pcphone://add?name=${name}&host=${encodeURIComponent(host)}&port=${port}&pin=${encodeURIComponent(pin)}${mac ? '&mac=' + mac : ''}`;
+  const hostParam = stateData.tls_active ? `https://${host}:${port}` : host;
+  return `pcphone://add?name=${name}&host=${encodeURIComponent(hostParam)}&port=${port}&pin=${encodeURIComponent(pin)}${mac ? '&mac=' + mac : ''}`;
 }
 
 function updateQrImage() {
@@ -1212,6 +1327,24 @@ function renderState(d, hydrateForms) {
   autoBtn.className = 'btn ' + (d.autostart_enabled ? 'btn-success' : 'btn-primary');
   document.getElementById('autostartMethodText').textContent = d.autostart_method || 'Task Scheduler / systemd';
   document.getElementById('macValueText').textContent = d.mac || 'Не найден';
+  if (d.app_version) document.getElementById('verBadge').textContent = 'v' + d.app_version;
+
+  // TLS & Pro Custom Buttons
+  const tlsBtn = document.getElementById('tlsToggleBtn');
+  const certLink = document.getElementById('tlsCertLink');
+  if (tlsBtn) {
+    tlsBtn.textContent = d.https_enabled ? (d.tls_active ? '🔒 HTTPS активен (Выкл)' : '🔒 HTTPS включён (Рестарт)') : '🔓 Включить HTTPS';
+    tlsBtn.className = 'btn ' + (d.https_enabled ? 'btn-success' : '');
+  }
+  if (certLink && d.tls && d.tls.cert_exists) certLink.style.display = 'inline-flex';
+  if (hydrateForms) {
+    renderCustomButtons(d.custom_buttons || []);
+    const hkSel = document.getElementById('cbHotkeySelect');
+    if (hkSel && d.hotkeys) {
+      hkSel.innerHTML = d.hotkeys.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
+    }
+  }
+  document.getElementById('wolAutofixBtn').style.display = d.os === 'linux' ? 'none' : 'inline-flex';
 
   // Unlock tab
   const instBadge = document.getElementById('unlockInstalledBadge');
@@ -1270,7 +1403,8 @@ function copyPairUri() {
 function openPairWeb() {
   const host = selectedIp || (stateData && stateData.selected_host) || '127.0.0.1';
   const port = (stateData && stateData.port) || 8765;
-  window.open(`http://${host}:${port}/pair`, '_blank');
+  const scheme = (stateData && stateData.tls_active) ? 'https' : 'http';
+  window.open(`${scheme}://${host}:${port}/pair`, '_blank');
 }
 
 function togglePinEye() {
@@ -1371,6 +1505,122 @@ async function saveNote() {
   try {
     await apiPost({ action: 'note_set', text: document.getElementById('sharedNoteBox').value });
     toast('📝 Заметка синхронизирована');
+  } catch (e) { toast('❌ ' + e.message, true); }
+}
+
+let customButtonsCache = [];
+
+function renderCustomButtons(list) {
+  customButtonsCache = Array.isArray(list) ? list.slice() : [];
+  const wrap = document.getElementById('customButtonsList');
+  if (!wrap) return;
+  if (!customButtonsCache.length) {
+    wrap.innerHTML = '<div class="muted" style="padding:10px 4px">Своих кнопок пока нет — добавьте первую ниже.</div>';
+    return;
+  }
+  wrap.innerHTML = customButtonsCache.map((b, i) => `
+    <div class="file-item">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(b.icon || '⚡')} <b>${escapeHtml(b.label)}</b> <span class="muted">(${escapeHtml(b.kind)}: ${escapeHtml(b.target)})</span></span>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn" style="padding:5px 10px;font-size:12px" onclick="testCustomBtn('${escapeHtml(b.id)}')">▶</button>
+        <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteCustomBtn(${i})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function onCustomKindChange() {
+  const k = document.getElementById('cbKind').value;
+  document.getElementById('cbTargetTextWrap').style.display = k === 'hotkey' ? 'none' : 'block';
+  document.getElementById('cbHotkeyWrap').style.display = k === 'hotkey' ? 'block' : 'none';
+}
+
+async function addCustomButton() {
+  const icon = (document.getElementById('cbIcon').value || '🚀').trim();
+  const label = document.getElementById('cbLabel').value.trim();
+  const kind = document.getElementById('cbKind').value;
+  const target = kind === 'hotkey'
+    ? document.getElementById('cbHotkeySelect').value
+    : document.getElementById('cbTarget').value.trim();
+  if (!label || !target) { toast('Укажите название и цель', true); return; }
+  const next = customButtonsCache.concat([{ id: 'btn_' + Date.now(), icon, label, kind, target }]);
+  try {
+    const res = await apiPost({ action: 'custom_buttons_save', buttons: next });
+    renderCustomButtons(res.buttons || next);
+    document.getElementById('cbLabel').value = '';
+    if (kind !== 'hotkey') document.getElementById('cbTarget').value = '';
+    toast(res.message || '✅ Кнопка добавлена');
+  } catch (e) { toast('❌ ' + e.message, true); }
+}
+
+async function deleteCustomBtn(idx) {
+  const next = customButtonsCache.filter((_, i) => i !== idx);
+  try {
+    const res = await apiPost({ action: 'custom_buttons_save', buttons: next });
+    renderCustomButtons(res.buttons || next);
+    toast('Кнопка удалена');
+  } catch (e) { toast('❌ ' + e.message, true); }
+}
+
+async function testCustomBtn(id) {
+  try {
+    const res = await apiPost({ action: 'custom_button_test', id });
+    toast(res.message || '▶ Выполнено');
+  } catch (e) { toast('❌ ' + e.message, true); }
+}
+
+async function diagnoseWol() {
+  const wrap = document.getElementById('wolChecksWrap');
+  wrap.innerHTML = '<div class="muted">Проверка сетевых адаптеров...</div>';
+  try {
+    const res = await apiPost({ action: 'wol_diagnose' });
+    const checks = res.checks || [];
+    wrap.innerHTML = checks.map(c => `
+      <div class="toggle-row" style="margin-bottom:0">
+        <div>
+          <div style="font-weight:700;font-size:13.5px">${c.ok ? '✅' : '⚠️'} ${escapeHtml(c.title)}</div>
+          <div class="muted" style="font-size:12px">${escapeHtml(c.value || '')}</div>
+          ${!c.ok && c.hint ? `<div style="font-size:11.5px;color:var(--warning);margin-top:3px">${escapeHtml(c.hint)}</div>` : ''}
+        </div>
+        <span class="badge ${c.ok ? 'badge-ok' : 'badge-warn'}">${c.ok ? 'OK' : 'Fix'}</span>
+      </div>`).join('') || '<div class="muted">Нет проверок</div>';
+  } catch (e) { wrap.innerHTML = `<div class="muted" style="color:var(--danger)">${escapeHtml(e.message)}</div>`; }
+}
+
+async function autofixWol() {
+  try {
+    const res = await apiPost({ action: 'wol_autofix' });
+    toast(res.message || '✅ Авто-исправление запущено');
+    setTimeout(diagnoseWol, 2200);
+  } catch (e) { toast('❌ ' + e.message, true); }
+}
+
+async function checkUpdates() {
+  const lbl = document.getElementById('updStatusText');
+  if (lbl) lbl.textContent = 'Проверка GitHub Releases...';
+  try {
+    const res = await apiPost({ action: 'check_updates' });
+    if (res.update_available) {
+      toast(`🆕 Доступна версия v${res.latest_version}!`);
+      if (lbl) {
+        lbl.innerHTML = `<span style="color:var(--success);font-weight:700">🆕 Доступна v${escapeHtml(res.latest_version)}</span> · <a href="${escapeHtml(res.installer_url || res.release_url)}" target="_blank" style="color:var(--accent-2)">Скачать установщик</a>`;
+      }
+    } else {
+      toast(`✅ У вас актуальная версия v${res.current_version}`);
+      if (lbl) lbl.textContent = `✅ Установлена актуальная версия v${res.current_version}`;
+    }
+  } catch (e) {
+    toast('❌ ' + e.message, true);
+    if (lbl) lbl.textContent = 'Ошибка проверки: ' + e.message;
+  }
+}
+
+async function toggleTls(regen) {
+  try {
+    const currently = Boolean(stateData && stateData.https_enabled);
+    const target = regen ? true : !currently;
+    const res = await apiPost({ action: 'tls_toggle', enabled: target, regen: Boolean(regen) });
+    toast(res.message || 'Сохранено');
+    pollState(false);
   } catch (e) { toast('❌ ' + e.message, true); }
 }
 

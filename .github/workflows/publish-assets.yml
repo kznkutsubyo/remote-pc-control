@@ -3,13 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       source_run:
-        description: 'Run ID whose five build/package jobs passed for tag v2.3.1'
+        description: 'Run ID whose five build/package jobs passed for tag v2.4.0'
         required: true
 permissions:
   contents: write
   actions: read
 env:
-  RELEASE_VERSION: '2.3.1'
+  RELEASE_VERSION: '2.4.0'
 jobs:
   release:
     runs-on: ubuntu-latest

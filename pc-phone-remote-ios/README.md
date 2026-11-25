@@ -1,9 +1,11 @@
 # PC Phone Remote Pro — iOS Edition
 
-Version **2.3.1** provides three ways to run **PC Phone Remote Pro** on iPhone and iPad (iOS 16.0+):
-- **Safari PWA** at `http://<YOUR_PC_IP>:8765/app` (zero extra software)
-- **Prebuilt Unsigned `.ipa`** (`PCPhoneRemote-v2.3.1.ipa`) in [GitHub Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest) for sideloading from Windows or macOS
+Version **2.4.0** provides three ways to run **PC Phone Remote Pro** on iPhone and iPad (iOS 16.0+):
+- **Safari PWA** at `http://<YOUR_PC_IP>:8765/app` (or HTTPS with optional local TLS certificate)
+- **Prebuilt Unsigned `.ipa`** (`PCPhoneRemote-v2.4.0.ipa`) in [GitHub Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest) for sideloading from Windows or macOS
 - **Native SwiftUI Source** (`pc-phone-remote-ios/`) for building locally with Xcode
+
+Includes built-in **QR Code Camera Scanner**, **Siri Shortcuts (`AppIntents`)**, **Live Screen View & Tap**, **Live Keyboard & Hotkeys**, **Real OS Clipboard Sync**, **Audio Output & App Volume Mixer**, **Display Brightness & Screen Off**, **Custom Studio Pro Buttons**, and **Process Manager**!
 
 > **Note:** Apple does not permit installing apps directly from Safari without an App Store listing or provisioning signature. Because the prebuilt `.ipa` is unsigned, sideloading it onto a physical device requires signing with your Apple ID via a sideloading tool (free personal Apple IDs require re-signing every 7 days unless automatic Wi-Fi refresh is used).
 

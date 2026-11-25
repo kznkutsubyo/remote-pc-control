@@ -32,6 +32,24 @@ from linux_support import (
     linux_unlock_session,
     linux_unlock_status,
 )
+from pro_features import (
+    HOTKEYS,
+    capture_screen_jpeg,
+    get_clipboard_text,
+    get_display_brightness,
+    kill_process_safe,
+    list_audio_state,
+    run_custom_button,
+    sanitize_custom_buttons,
+    send_hotkey,
+    set_app_audio_volume,
+    set_audio_output,
+    set_clipboard_text,
+    set_display_brightness,
+    tap_screen,
+    turn_display_off,
+    type_unicode_text,
+)
 from unlock_ipc import DEFAULT_CONTROL_PIPE, pipe_transact
 
 APP_DIR = Path(__file__).resolve().parent
@@ -57,8 +75,23 @@ ACTIONS = {
     "touchpad",
     "scenes.run",
     "deck.run",
+    "deck.custom_list",
+    "deck.custom_run",
     "wol.wake",
     "processes.list",
+    "processes.kill",
+    "screen.capture",
+    "screen.tap",
+    "keyboard.type",
+    "keyboard.hotkey",
+    "clipboard.get",
+    "clipboard.set",
+    "audio.list",
+    "audio.set_output",
+    "audio.set_app_volume",
+    "display.status",
+    "display.brightness",
+    "display.off",
 }
 
 
@@ -546,8 +579,144 @@ class Companion:
                     continue
             procs.sort(key=lambda item: item["mem_mb"], reverse=True)
             return {"processes": procs[:15]}
+        if action == "processes.kill":
+            pid = payload.get("pid")
+            if type(pid) is not int:
+                raise FeatureError("Valid integer PID is required", 400)
+            try:
+                return kill_process_safe(pid)
+            except PermissionError as exc:
+                raise FeatureError(str(exc), 403) from None
+            except FileNotFoundError as exc:
+                raise FeatureError(str(exc), 404) from None
+            except (ValueError, RuntimeError) as exc:
+                raise FeatureError(str(exc), 400) from None
+        if action == "screen.capture":
+            if self.session_locked() is True:
+                raise FeatureError("Screen capture requires an unlocked session", 409)
+            try:
+                mon = int(payload.get("monitor", 0) or 0)
+                max_w = int(payload.get("max_width", 960) or 960)
+                qual = int(payload.get("quality", 60) or 60)
+                raw_jpeg, w, h, monitors = capture_screen_jpeg(mon, max_width=max_w, quality=qual)
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+            return {
+                "image_b64": base64.b64encode(raw_jpeg).decode("ascii"),
+                "mime": "image/jpeg",
+                "width": w,
+                "height": h,
+                "monitor": mon,
+                "monitors": monitors,
+            }
+        if action == "screen.tap":
+            if self.session_locked() is True:
+                raise FeatureError("Screen tap requires an unlocked session", 409)
+            try:
+                nx = float(payload.get("nx", payload.get("x", 0.5)))
+                ny = float(payload.get("ny", payload.get("y", 0.5)))
+                mon = int(payload.get("monitor", 0) or 0)
+                btn = str(payload.get("button") or "left")
+                return tap_screen(nx, ny, monitor_idx=mon, button=btn, run_desktop_fn=run_on_input_desktop)
+            except (TypeError, ValueError) as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "keyboard.type":
+            if self.session_locked() is True:
+                raise FeatureError("Keyboard input requires an unlocked session", 409)
+            try:
+                return type_unicode_text(payload.get("text"), run_desktop_fn=run_on_input_desktop)
+            except ValueError as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "keyboard.hotkey":
+            if self.session_locked() is True:
+                raise FeatureError("Hotkeys require an unlocked session", 409)
+            try:
+                return send_hotkey(payload.get("hotkey"), run_desktop_fn=run_on_input_desktop)
+            except ValueError as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "clipboard.get":
+            return {"text": get_clipboard_text()}
+        if action == "clipboard.set":
+            try:
+                return set_clipboard_text(payload.get("text"))
+            except ValueError as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "audio.list":
+            try:
+                return list_audio_state()
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "audio.set_output":
+            try:
+                return set_audio_output(payload.get("device_id"))
+            except ValueError as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "audio.set_app_volume":
+            try:
+                pid = int(payload.get("pid"))
+                vol = int(payload["volume"]) if payload.get("volume") is not None else None
+                muted = bool(payload["muted"]) if payload.get("muted") is not None else None
+                return set_app_audio_volume(pid, volume=vol, muted=muted)
+            except (TypeError, ValueError) as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 404) from None
+        if action == "display.status":
+            return get_display_brightness()
+        if action == "display.brightness":
+            try:
+                return set_display_brightness(int(payload.get("brightness")))
+            except (TypeError, ValueError) as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "display.off":
+            if self.session_locked() is True:
+                raise FeatureError("Display off requires an unlocked session", 409)
+            try:
+                return turn_display_off(run_desktop_fn=run_on_input_desktop)
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
+        if action == "deck.custom_list":
+            return {"buttons": self._get_custom_buttons(), "hotkeys": sorted(HOTKEYS.keys())}
+        if action == "deck.custom_run":
+            if self.session_locked() is True:
+                raise FeatureError("Custom buttons require an unlocked session", 409)
+            bid = str(payload.get("id") or "").strip()
+            btn = next((b for b in self._get_custom_buttons() if b["id"] == bid), None)
+            if not btn:
+                raise FeatureError("Custom button not found", 404)
+            try:
+                return run_custom_button(btn, run_desktop_fn=run_on_input_desktop)
+            except ValueError as exc:
+                raise FeatureError(str(exc), 400) from None
+            except Exception as exc:
+                raise FeatureError(str(exc), 501) from None
 
         raise FeatureError("Unsupported action")
+
+    def _get_custom_buttons(self) -> list[dict]:
+        if isinstance(self.config.get("custom_buttons"), list):
+            return sanitize_custom_buttons(self.config.get("custom_buttons"))
+        cfg_path = APP_DIR / "config.json"
+        if cfg_path.exists():
+            try:
+                loaded = json.loads(cfg_path.read_text("utf-8"))
+                if isinstance(loaded, dict) and isinstance(loaded.get("custom_buttons"), list):
+                    return sanitize_custom_buttons(loaded["custom_buttons"])
+            except Exception:
+                pass
+        return []
 
     def _handle_touchpad(self, payload: dict) -> dict:
         if self.session_locked() is True:

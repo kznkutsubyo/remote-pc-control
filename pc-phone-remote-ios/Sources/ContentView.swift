@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 private enum Theme {
@@ -14,27 +15,39 @@ private enum Theme {
 struct ContentView: View {
     @EnvironmentObject var store: AppStore
     @State private var showScannerSheet = false
+    @State private var showQrCameraSheet = false
     @State private var showEditorSheet = false
     @State private var editingProfile: DeviceProfile?
     @State private var showUnlockSheet = false
     @State private var showFileImporter = false
+    @State private var showScreenSheet = false
+    @State private var showAudioSheet = false
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                TopHeaderBar(onOpenScanner: {
-                    store.scanLAN()
-                    showScannerSheet = true
-                })
+                TopHeaderBar(
+                    onOpenQrCamera: { showQrCameraSheet = true },
+                    onOpenScanner: {
+                        store.scanLAN()
+                        showScannerSheet = true
+                    }
+                )
 
                 TabView(selection: $store.currentTab) {
-                    RemoteTabView(onOpenUnlock: { showUnlockSheet = true })
-                        .tag(0)
-                        .tabItem { Label("Remote", systemImage: "tv.and.mediabox") }
+                    RemoteTabView(
+                        onOpenUnlock: { showUnlockSheet = true },
+                        onOpenAudio: {
+                            Task { await store.refreshAudio() }
+                            showAudioSheet = true
+                        }
+                    )
+                    .tag(0)
+                    .tabItem { Label("Remote", systemImage: "tv.and.mediabox") }
 
-                    StudioProTabView()
+                    StudioProTabView(onOpenScreen: { showScreenSheet = true })
                         .tag(1)
                         .tabItem { Label("Studio Pro", systemImage: "slider.horizontal.3") }
 
@@ -43,6 +56,7 @@ struct ContentView: View {
                         .tabItem { Label("Files", systemImage: "folder.badge.plus") }
 
                     SettingsTabView(
+                        onOpenQrCamera: { showQrCameraSheet = true },
                         onOpenScanner: {
                             store.scanLAN()
                             showScannerSheet = true
@@ -65,6 +79,19 @@ struct ContentView: View {
         .sheet(isPresented: $store.showOnboardingTour) {
             OnboardingTourSheet { store.completeTour() }
         }
+        .sheet(isPresented: $showQrCameraSheet) {
+            QRScannerView { rawCode in
+                if let url = URL(string: rawCode.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    store.handleIncomingURL(url)
+                }
+            }
+        }
+        .sheet(isPresented: $showScreenSheet) {
+            ScreenLiveSheet()
+        }
+        .sheet(isPresented: $showAudioSheet) {
+            AudioMixerSheet()
+        }
         .sheet(isPresented: $showScannerSheet) {
             LanScannerSheet(onSelect: { pc in
                 editingProfile = DeviceProfile(
@@ -82,7 +109,11 @@ struct ContentView: View {
             DeviceEditorSheet(initial: editingProfile) { saved in
                 store.addOrUpdateProfile(saved)
                 store.currentTab = 0
-                Task { await store.refreshStatus() }
+                Task {
+                    await store.refreshStatus()
+                    await store.refreshBrightness()
+                    await store.refreshCustomButtons()
+                }
             }
         }
         .sheet(isPresented: $showUnlockSheet) {
@@ -101,7 +132,11 @@ struct ContentView: View {
         }
         .onAppear {
             if store.activeProfile != nil {
-                Task { await store.refreshStatus() }
+                Task {
+                    await store.refreshStatus()
+                    await store.refreshBrightness()
+                    await store.refreshCustomButtons()
+                }
             }
         }
     }
@@ -114,11 +149,12 @@ private struct EnrollWrapper: Identifiable {
 
 private struct TopHeaderBar: View {
     @EnvironmentObject var store: AppStore
+    let onOpenQrCamera: () -> Void
     let onOpenScanner: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.activeProfile?.name ?? "PC Phone Remote Pro")
                         .font(.headline.bold())
@@ -128,6 +164,13 @@ private struct TopHeaderBar: View {
                         .foregroundColor(store.bannerIsError ? Theme.danger : Theme.success)
                 }
                 Spacer()
+                Button(action: onOpenQrCamera) {
+                    Image(systemName: "qrcode.viewfinder")
+                        .foregroundColor(Theme.accent)
+                        .padding(8)
+                        .background(Theme.surface2)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
                 Button(action: onOpenScanner) {
                     Image(systemName: "antenna.radiowaves.left.and.right")
                         .foregroundColor(Theme.accent)
@@ -136,7 +179,10 @@ private struct TopHeaderBar: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 Button {
-                    Task { await store.refreshStatus() }
+                    Task {
+                        await store.refreshStatus()
+                        await store.refreshBrightness()
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(.white)
@@ -181,13 +227,14 @@ private struct CoachMarkBanner: View {
 private struct RemoteTabView: View {
     @EnvironmentObject var store: AppStore
     let onOpenUnlock: () -> Void
+    let onOpenAudio: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
                 CoachMarkBanner(
                     key: "remote",
-                    message: "Tip: Use Unlock for Windows Face ID / PIN login or 1-tap Linux session unlock, and Wake PC to boot over LAN."
+                    message: "Tip: Use Unlock for Windows Face ID / PIN login, Audio Mixer for per-app volume, or Siri Shortcuts in the iOS Shortcuts app."
                 )
 
                 if let profile = store.activeProfile {
@@ -213,17 +260,56 @@ private struct RemoteTabView: View {
                     .tint(Theme.accent)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Media & Volume").font(.subheadline.bold()).foregroundColor(.gray)
-                        HStack(spacing: 10) {
-                            ActionBtn("Vol -", "speaker.wave.1") { store.performCommand(["action": "media", "op": "vol_down"]) }
-                            ActionBtn("Mute", "speaker.slash") { store.performCommand(["action": "media", "op": "mute"]) }
-                            ActionBtn("Vol +", "speaker.wave.3") { store.performCommand(["action": "media", "op": "vol_up"]) }
+                        HStack {
+                            Text("Media & Sound").font(.subheadline.bold()).foregroundColor(.gray)
+                            Spacer()
+                            Button(action: onOpenAudio) {
+                                Label("Mixer & Outputs", systemImage: "slider.horizontal.below.rectangle")
+                                    .font(.caption.bold())
+                            }
+                            .tint(Theme.accent)
                         }
                         HStack(spacing: 10) {
-                            ActionBtn("Prev", "backward.fill") { store.performCommand(["action": "media", "op": "prev"]) }
-                            ActionBtn("Play/Pause", "playpause.fill") { store.performCommand(["action": "media", "op": "play_pause"]) }
-                            ActionBtn("Next", "forward.fill") { store.performCommand(["action": "media", "op": "next"]) }
+                            ActionBtn("Vol -", "speaker.wave.1") { store.performCommand(["action": "media", "key": "volume_down"]) }
+                            ActionBtn("Mute", "speaker.slash") { store.performCommand(["action": "media", "key": "mute"]) }
+                            ActionBtn("Vol +", "speaker.wave.3") { store.performCommand(["action": "media", "key": "volume_up"]) }
                         }
+                        HStack(spacing: 10) {
+                            ActionBtn("Prev", "backward.fill") { store.performCommand(["action": "media", "key": "previous"]) }
+                            ActionBtn("Play/Pause", "playpause.fill") { store.performCommand(["action": "media", "key": "play_pause"]) }
+                            ActionBtn("Next", "forward.fill") { store.performCommand(["action": "media", "key": "next"]) }
+                        }
+                    }
+                    .padding()
+                    .background(Theme.surface1)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Display & Brightness").font(.subheadline.bold()).foregroundColor(.gray)
+                            Spacer()
+                            if store.brightnessSupported {
+                                Text("\(Int(store.brightnessPercent))%").font(.caption.monospacedDigit()).foregroundColor(Theme.accent)
+                            }
+                        }
+                        if store.brightnessSupported {
+                            Slider(value: $store.brightnessPercent, in: 0...100, step: 5) { editing in
+                                if !editing {
+                                    store.performCommand(["action": "display.brightness", "brightness": Int(store.brightnessPercent)], successNote: "Brightness updated")
+                                }
+                            }
+                            .tint(Theme.accent)
+                        }
+                        Button {
+                            store.performCommand(["action": "display.off"], successNote: "Display turned off")
+                        } label: {
+                            Label("Turn Off Screen (Keep PC Awake)", systemImage: "display")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.white)
                     }
                     .padding()
                     .background(Theme.surface1)
@@ -241,7 +327,7 @@ private struct RemoteTabView: View {
                     .background(Theme.surface1)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                 } else {
-                    Text("Add or auto-find your Windows / Linux PC in the Devices tab.")
+                    Text("Scan QR code or tap Auto-Find PC on Wi-Fi in the Devices tab.")
                         .foregroundColor(.gray)
                         .padding(.top, 40)
                 }
@@ -283,7 +369,7 @@ private struct ActionBtn: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: icon).font(.title3)
-                Text(title).font(.caption.bold())
+                Text(title).font(.caption.bold()).lineLimit(1)
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
@@ -296,15 +382,70 @@ private struct ActionBtn: View {
 
 private struct StudioProTabView: View {
     @EnvironmentObject var store: AppStore
+    let onOpenScreen: () -> Void
     @State private var lastDrag: CGSize = .zero
+    @State private var typedText: String = ""
+    @State private var killConfirmPid: Int?
+    @State private var killConfirmName: String = ""
+
+    private let hotkeyList: [(String, String)] = [
+        ("Alt+Tab", "alt_tab"),
+        ("Win+D", "win_d"),
+        ("Lang", "switch_lang"),
+        ("Ctrl+C", "ctrl_c"),
+        ("Ctrl+V", "ctrl_v"),
+        ("Alt+F4", "alt_f4"),
+        ("Task Mgr", "ctrl_shift_esc"),
+        ("Enter", "enter"),
+        ("Esc", "esc"),
+    ]
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
                 CoachMarkBanner(
                     key: "studio",
-                    message: "Tip: Drag on the Touchpad surface to move your Windows/Linux cursor, or tap macros below."
+                    message: "Tip: Open Live Screen View to tap directly on PC UI, type into focused windows, or run custom buttons."
                 )
+
+                Button(action: onOpenScreen) {
+                    Label("Live PC Screen & Tap Control", systemImage: "macwindow.and.cursorarrow")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Live Keyboard & Hotkeys").font(.subheadline.bold()).foregroundColor(.gray)
+                    HStack {
+                        TextField("Type straight into PC window...", text: $typedText)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Send") {
+                            let val = typedText
+                            guard !val.isEmpty else { return }
+                            typedText = ""
+                            store.performCommand(["action": "keyboard.type", "text": val], successNote: "Typed on PC")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accent)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(hotkeyList, id: \.1) { title, code in
+                                Button(title) {
+                                    store.performCommand(["action": "keyboard.hotkey", "hotkey": code])
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.white)
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Theme.surface1)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Wireless Touchpad").font(.subheadline.bold()).foregroundColor(.gray)
@@ -316,7 +457,7 @@ private struct StudioProTabView: View {
                                 Text("Drag to move cursor • Tap to click").font(.caption).foregroundColor(.gray)
                             }
                         )
-                        .frame(height: 180)
+                        .frame(height: 165)
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
@@ -345,12 +486,64 @@ private struct StudioProTabView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Stream Deck Macros").font(.subheadline.bold()).foregroundColor(.gray)
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ActionBtn("Browser", "globe") { store.performCommand(["action": "deck", "macro": "browser"]) }
-                        ActionBtn("Terminal", "terminal") { store.performCommand(["action": "deck", "macro": "terminal"]) }
-                        ActionBtn("Task Mgr", "cpu") { store.performCommand(["action": "deck", "macro": "taskmgr"]) }
-                        ActionBtn("Downloads", "folder") { store.performCommand(["action": "deck", "macro": "downloads"]) }
-                        ActionBtn("Min All", "rectangle.compress.vertical") { store.performCommand(["action": "deck", "macro": "minimize_all"]) }
-                        ActionBtn("Screenshot", "camera.viewfinder") { store.performCommand(["action": "deck", "macro": "screenshot"]) }
+                        ActionBtn("Browser", "globe") { store.performCommand(["action": "deck.run", "macro": "browser"]) }
+                        ActionBtn("Explorer", "folder") { store.performCommand(["action": "deck.run", "macro": "explorer"]) }
+                        ActionBtn("Task Mgr", "cpu") { store.performCommand(["action": "deck.run", "macro": "task_manager"]) }
+                        ActionBtn("Desktop", "macwindow") { store.performCommand(["action": "deck.run", "macro": "desktop"]) }
+                        ActionBtn("Screenshot", "camera.viewfinder") { store.performCommand(["action": "deck.run", "macro": "screenshot"]) }
+                        ActionBtn("Mute", "speaker.slash") { store.performCommand(["action": "deck.run", "macro": "mute"]) }
+                    }
+                    if !store.customButtons.isEmpty {
+                        Text("Custom Buttons").font(.caption.bold()).foregroundColor(.gray).padding(.top, 6)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(Array(store.customButtons.enumerated()), id: \.offset) { _, btn in
+                                Button {
+                                    store.performCommand(["action": "deck.custom_run", "id": btn["id"] ?? ""])
+                                } label: {
+                                    Text("\(btn["icon"] ?? "⚡") \(btn["label"] ?? "Btn")")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Theme.surface2)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Theme.surface1)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("PC Processes").font(.subheadline.bold()).foregroundColor(.gray)
+                        Spacer()
+                        Button("Refresh") { Task { await store.refreshProcesses() } }
+                    }
+                    if store.processes.isEmpty {
+                        Text("Tap Refresh to view top processes.").font(.caption).foregroundColor(.gray)
+                    } else {
+                        ForEach(Array(store.processes.enumerated()), id: \.offset) { _, proc in
+                            let pid = (proc["pid"] as? NSNumber)?.intValue ?? 0
+                            let name = (proc["name"] as? String) ?? "process"
+                            let mb = (proc["mem_mb"] as? NSNumber)?.intValue ?? 0
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(name).font(.callout.bold()).foregroundColor(.white).lineLimit(1)
+                                    Text("PID \(pid) • \(mb) MB").font(.caption2).foregroundColor(.gray)
+                                }
+                                Spacer()
+                                Button {
+                                    killConfirmPid = pid
+                                    killConfirmName = name
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundColor(Theme.danger)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
                 }
                 .padding()
@@ -360,6 +553,231 @@ private struct StudioProTabView: View {
             .padding()
         }
         .background(Theme.bg)
+        .onAppear {
+            Task {
+                await store.refreshCustomButtons()
+                await store.refreshProcesses()
+            }
+        }
+        .alert("Terminate Process?", isPresented: Binding(get: { killConfirmPid != nil }, set: { if !$0 { killConfirmPid = nil } })) {
+            Button("Terminate", role: .destructive) {
+                if let pid = killConfirmPid {
+                    store.performCommand(["action": "processes.kill", "pid": pid], successNote: "Terminated \(killConfirmName)")
+                    Task { await store.refreshProcesses() }
+                }
+                killConfirmPid = nil
+            }
+            Button("Cancel", role: .cancel) { killConfirmPid = nil }
+        } message: {
+            Text("Terminate \(killConfirmName) (PID \(killConfirmPid ?? 0))?")
+        }
+    }
+}
+
+private struct ScreenLiveSheet: View {
+    @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) var dismiss
+    @State private var screenImage: UIImage?
+    @State private var monitors: [[String: Any]] = []
+    @State private var selectedMonitor: Int = 0
+    @State private var tapButton: String = "left"
+    @State private var autoRefresh = false
+    @State private var statusText = "Tap Refresh to capture PC screen"
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                if monitors.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack {
+                            ForEach(Array(monitors.enumerated()), id: \.offset) { idx, mon in
+                                Button((mon["name"] as? String) ?? "Monitor \(idx + 1)") {
+                                    selectedMonitor = (mon["id"] as? NSNumber)?.intValue ?? idx
+                                    Task { await capture() }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(selectedMonitor == idx ? Theme.accent : Theme.surface2)
+                            }
+                        }
+                    }
+                }
+
+                GeometryReader { geo in
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14).fill(Theme.surface1)
+                        if let img = screenImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .gesture(
+                                    DragGesture(minimumDistance: 0)
+                                        .onEnded { value in
+                                            let nx = max(0.0, min(1.0, value.location.x / max(1.0, geo.size.width)))
+                                            let ny = max(0.0, min(1.0, value.location.y / max(1.0, geo.size.height)))
+                                            Task {
+                                                guard let p = store.activeProfile else { return }
+                                                _ = try? await store.callAction(profile: p, payload: [
+                                                    "action": "screen.tap",
+                                                    "nx": nx,
+                                                    "ny": ny,
+                                                    "monitor": selectedMonitor,
+                                                    "button": tapButton,
+                                                ])
+                                                try? await Task.sleep(nanoseconds: 250_000_000)
+                                                await capture()
+                                            }
+                                        }
+                                )
+                        } else {
+                            Text(statusText).foregroundColor(.gray).padding()
+                        }
+                    }
+                }
+
+                Picker("Tap Mode", selection: $tapButton) {
+                    Text("Left Click").tag("left")
+                    Text("Right Click").tag("right")
+                    Text("Double Click").tag("double")
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    Toggle("Auto Refresh", isOn: $autoRefresh)
+                    Spacer()
+                    Button("Capture") { Task { await capture() } }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accent)
+                }
+            }
+            .padding()
+            .background(Theme.bg)
+            .navigationTitle("Live Screen")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+            }
+            .task { await capture() }
+            .task(id: autoRefresh) {
+                while autoRefresh {
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    await capture()
+                }
+            }
+        }
+    }
+
+    private func capture() async {
+        guard let profile = store.activeProfile else { return }
+        do {
+            let res = try await store.callAction(profile: profile, payload: [
+                "action": "screen.capture",
+                "monitor": selectedMonitor,
+                "max_width": 960,
+                "quality": 60,
+            ])
+            if let b64 = res["image_b64"] as? String,
+               let data = Data(base64Encoded: b64),
+               let img = UIImage(data: data)
+            {
+                screenImage = img
+                monitors = (res["monitors"] as? [[String: Any]]) ?? monitors
+                statusText = ""
+            }
+        } catch {
+            statusText = error.localizedDescription
+        }
+    }
+}
+
+private struct AudioMixerSheet: View {
+    @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Output Devices") {
+                    if store.audioDevices.isEmpty {
+                        Text("No audio outputs found").foregroundColor(.gray)
+                    } else {
+                        ForEach(Array(store.audioDevices.enumerated()), id: \.offset) { _, dev in
+                            let devId = (dev["id"] as? String) ?? ""
+                            let name = (dev["name"] as? String) ?? devId
+                            let active = (dev["active"] as? Bool) ?? false
+                            Button {
+                                Task {
+                                    guard let p = store.activeProfile else { return }
+                                    _ = try? await store.callAction(profile: p, payload: ["action": "audio.set_output", "device_id": devId])
+                                    await store.refreshAudio()
+                                }
+                            } label: {
+                                HStack {
+                                    Text(name)
+                                    Spacer()
+                                    if active { Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.success) }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("App Volume Mixer") {
+                    if store.audioSessions.isEmpty {
+                        Text("No active audio apps").foregroundColor(.gray)
+                    } else {
+                        ForEach(Array(store.audioSessions.enumerated()), id: \.offset) { _, sess in
+                            let pid = (sess["pid"] as? NSNumber)?.intValue ?? 0
+                            let name = (sess["name"] as? String) ?? "App"
+                            let vol = (sess["volume"] as? NSNumber)?.doubleValue ?? 100
+                            let muted = (sess["muted"] as? Bool) ?? false
+                            AppVolumeRow(pid: pid, name: name, initialVol: vol, initialMuted: muted)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Audio Mixer")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) { Button("Refresh") { Task { await store.refreshAudio() } } }
+            }
+        }
+    }
+}
+
+private struct AppVolumeRow: View {
+    @EnvironmentObject var store: AppStore
+    let pid: Int
+    let name: String
+    @State private var vol: Double
+    @State private var muted: Bool
+
+    init(pid: Int, name: String, initialVol: Double, initialMuted: Bool) {
+        self.pid = pid
+        self.name = name
+        _vol = State(initialValue: initialVol)
+        _muted = State(initialValue: initialMuted)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(name).font(.subheadline.bold())
+                Spacer()
+                Button {
+                    muted.toggle()
+                    store.performCommand(["action": "audio.set_app_volume", "pid": pid, "muted": muted])
+                } label: {
+                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .foregroundColor(muted ? Theme.danger : Theme.accent)
+                }
+                .buttonStyle(.borderless)
+            }
+            Slider(value: $vol, in: 0...100, step: 5) { editing in
+                if !editing {
+                    store.performCommand(["action": "audio.set_app_volume", "pid": pid, "volume": Int(vol)])
+                }
+            }
+        }
     }
 }
 
@@ -372,7 +790,7 @@ private struct TransferTabView: View {
             VStack(spacing: 14) {
                 CoachMarkBanner(
                     key: "transfer",
-                    message: "Tip: Upload files directly into your PC Downloads/PCPhoneRemote folder or push text to PC Clipboard."
+                    message: "Tip: Upload files directly into PC Downloads/PCPhoneRemote or sync the real Windows/Linux Clipboard."
                 )
 
                 Button(action: onPickFile) {
@@ -410,7 +828,14 @@ private struct TransferTabView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Live Clipboard").font(.subheadline.bold()).foregroundColor(.gray)
+                    HStack {
+                        Text("Live PC Clipboard").font(.subheadline.bold()).foregroundColor(.gray)
+                        Spacer()
+                        Button("Paste iPhone") {
+                            store.clipboardText = UIPasteboard.general.string ?? store.clipboardText
+                        }
+                        .font(.caption)
+                    }
                     TextEditor(text: $store.clipboardText)
                         .frame(minHeight: 90)
                         .scrollContentBackground(.hidden)
@@ -422,14 +847,16 @@ private struct TransferTabView: View {
                             Task {
                                 guard let p = store.activeProfile else { return }
                                 if let res = try? await store.callAction(profile: p, payload: ["action": "clipboard.get"]) {
-                                    store.clipboardText = (res["text"] as? String) ?? ""
+                                    let val = (res["text"] as? String) ?? ""
+                                    store.clipboardText = val
+                                    UIPasteboard.general.string = val
                                 }
                             }
                         }
                         .buttonStyle(.bordered)
                         Spacer()
                         Button("Push to PC") {
-                            store.performCommand(["action": "clipboard.set", "text": store.clipboardText], successNote: "Clipboard synced")
+                            store.performCommand(["action": "clipboard.set", "text": store.clipboardText], successNote: "PC Clipboard updated")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.accent)
@@ -448,6 +875,7 @@ private struct TransferTabView: View {
 
 private struct SettingsTabView: View {
     @EnvironmentObject var store: AppStore
+    let onOpenQrCamera: () -> Void
     let onOpenScanner: () -> Void
     let onAddManual: () -> Void
     let onEdit: (DeviceProfile) -> Void
@@ -455,6 +883,10 @@ private struct SettingsTabView: View {
     var body: some View {
         List {
             Section("Quick Setup") {
+                Button(action: onOpenQrCamera) {
+                    Label("Scan QR Code on PC", systemImage: "qrcode.viewfinder")
+                        .foregroundColor(Theme.accent)
+                }
                 Button(action: onOpenScanner) {
                     Label("Auto-Find PC on Wi-Fi (UDP 8766)", systemImage: "antenna.radiowaves.left.and.right")
                         .foregroundColor(Theme.accent)
@@ -643,7 +1075,7 @@ private struct UnlockSheetView: View {
                         .tint(Theme.accent)
                         .disabled(busy)
                     } else {
-                        Text("Pair this iPhone on PC via configure.py or enter a pcphone://enroll link.")
+                        Text("Pair this iPhone on PC via the Desktop Control Center or scan an enrollment QR code.")
                             .multilineTextAlignment(.center)
                             .foregroundColor(.gray)
                     }
@@ -739,10 +1171,10 @@ private struct OnboardingTourSheet: View {
     @State private var page = 0
 
     private let steps: [(icon: String, title: String, body: String)] = [
-        ("📡", "1. One-Tap PC Connection", "Run the installer on Windows or Linux, then tap Auto-Find PC on Wi-Fi or scan the QR code."),
-        ("🔐", "2. Unified Security PIN", "One PIN connects your iPhone and unlocks the Windows or Linux sign-in screen."),
-        ("🖱️", "3. Trackpad, Media & WoL", "Control cursor movement, media playback, power, sleep, and Wake-on-LAN effortlessly."),
-        ("📂", "4. Linux, Files & Face ID", "Send files straight to PC Downloads, sync clipboard text, and unlock Windows with Face ID."),
+        ("📡", "1. One-Tap & QR Connection", "Scan the QR code from the PC Control Center or tap Auto-Find PC on Wi-Fi."),
+        ("🖥", "2. Live Screen, Audio & Brightness", "View your PC screen, tap directly, adjust brightness, or switch audio output devices."),
+        ("🎙️", "3. Siri Shortcuts & Live Keyboard", "Lock, sleep, or mute via Siri Shortcuts and type directly into any PC window."),
+        ("🔐", "4. Files, Clipboard & Face ID", "Transfer files to PC Downloads, sync live Windows/Linux clipboard, and unlock with Face ID."),
     ]
 
     var body: some View {
