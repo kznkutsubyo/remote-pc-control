@@ -769,9 +769,48 @@ namespace PCPhoneRemoteSetup
             string startDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", "PC Phone Remote");
             Directory.CreateDirectory(startDir);
 
-            CreateShortcutFile(Path.Combine(desktopDir, "PC Phone Remote.lnk"), launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
+            bool updatedDesktopSubfolder = false;
+            try
+            {
+                if (Directory.Exists(desktopDir))
+                {
+                    foreach (string subDir in Directory.GetDirectories(desktopDir))
+                    {
+                        string subMain = Path.Combine(subDir, "PC Phone Remote.lnk");
+                        string subCfg = Path.Combine(subDir, "Configure PC Phone Remote.lnk");
+                        if (File.Exists(subMain))
+                        {
+                            CreateShortcutFile(subMain, launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
+                            updatedDesktopSubfolder = true;
+                        }
+                        if (File.Exists(subCfg))
+                        {
+                            CreateShortcutFile(subCfg, launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
+                            updatedDesktopSubfolder = true;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            string rootMain = Path.Combine(desktopDir, "PC Phone Remote.lnk");
+            string rootCfg = Path.Combine(desktopDir, "Configure PC Phone Remote.lnk");
+            if (!updatedDesktopSubfolder || File.Exists(rootMain))
+            {
+                CreateShortcutFile(rootMain, launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
+            }
+            if (File.Exists(rootCfg))
+            {
+                CreateShortcutFile(rootCfg, launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
+            }
+
             CreateShortcutFile(Path.Combine(startDir, "PC Phone Remote.lnk"), launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
             CreateShortcutFile(Path.Combine(startDir, "PC Phone Remote (Tray).lnk"), launcherExe, "--tray", pcDir, icoPath, "PC Phone Remote System Tray");
+            string startCfg = Path.Combine(startDir, "Configure PC Phone Remote.lnk");
+            if (File.Exists(startCfg))
+            {
+                CreateShortcutFile(startCfg, launcherExe, "", pcDir, icoPath, "PC Phone Remote Control Center");
+            }
         }
 
         private static void CreateShortcutFile(string lnkPath, string target, string args, string workDir, string iconPath, string desc)
@@ -822,7 +861,7 @@ namespace PCPhoneRemoteSetup
                     if (key != null)
                     {
                         key.SetValue("DisplayName", "PC Phone Remote");
-                        key.SetValue("DisplayVersion", "2.3.0");
+                        key.SetValue("DisplayVersion", "2.3.1");
                         key.SetValue("Publisher", "PC Phone Remote");
                         key.SetValue("InstallLocation", installDir);
                         string ico = Path.Combine(installDir, "pc-phone-remote", "assets", "app_icon.ico");
@@ -1546,7 +1585,7 @@ case "$INSTALL_LANG" in
   ru)
     MSG_UNINST="Удаление PC Phone Remote..."
     MSG_DONE_UNINST="Готово."
-    MSG_BANNER="        PC Phone Remote — Установщик Linux v2.3.0        "
+    MSG_BANNER="        PC Phone Remote — Установщик Linux v2.3.1        "
     MSG_S1="Проверка Python 3 и системных зависимостей..."
     MSG_S2="Распаковка файлов в ${INSTALL_DIR}..."
     MSG_S3="Настройка виртуального окружения Python..."
@@ -1560,7 +1599,7 @@ case "$INSTALL_LANG" in
   uk)
     MSG_UNINST="Видалення PC Phone Remote..."
     MSG_DONE_UNINST="Готово."
-    MSG_BANNER="        PC Phone Remote — Інсталятор Linux v2.3.0        "
+    MSG_BANNER="        PC Phone Remote — Інсталятор Linux v2.3.1        "
     MSG_S1="Перевірка Python 3 та системних компонентів..."
     MSG_S2="Розпакування файлів у ${INSTALL_DIR}..."
     MSG_S3="Налаштування віртуального середовища Python..."
@@ -1574,7 +1613,7 @@ case "$INSTALL_LANG" in
   *)
     MSG_UNINST="Uninstalling PC Phone Remote..."
     MSG_DONE_UNINST="Done."
-    MSG_BANNER="        PC Phone Remote — Linux Installer v2.3.0             "
+    MSG_BANNER="        PC Phone Remote — Linux Installer v2.3.1             "
     MSG_S1="Checking Python 3 & desktop helpers..."
     MSG_S2="Extracting application archive to ${INSTALL_DIR}..."
     MSG_S3="Setting up isolated Python virtual environment..."

@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 env:
-  RELEASE_VERSION: '2.3.0'
+  RELEASE_VERSION: '2.3.1'
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -130,11 +130,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
-      - name: Build unsigned iOS simulator app
+      - name: Build unsigned iOS device IPA
         working-directory: pc-phone-remote-ios
         run: |
           xcodegen generate
-          xcodebuild -project PCPhoneRemote.xcodeproj -scheme PCPhoneRemote -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          xcodebuild \
+            -project PCPhoneRemote.xcodeproj \
+            -scheme PCPhoneRemote \
+            -sdk iphoneos \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            build
+          APP_DIR="build/Build/Products/Release-iphoneos/PCPhoneRemote.app"
+          test -d "$APP_DIR"
+          test -f "$APP_DIR/PCPhoneRemote"
+          ls -la "$APP_DIR"
+          file "$APP_DIR/PCPhoneRemote"
+          file "$APP_DIR/PCPhoneRemote" | grep -q "arm64"
+          rm -rf ipa_stage
+          mkdir -p ipa_stage/Payload
+          cp -R "$APP_DIR" ipa_stage/Payload/
+          rm -rf ipa_stage/Payload/PCPhoneRemote.app/_CodeSignature
+          mkdir -p "$GITHUB_WORKSPACE/release-dist"
+          IPA_OUT="$GITHUB_WORKSPACE/release-dist/PCPhoneRemote-v${RELEASE_VERSION}.ipa"
+          (cd ipa_stage && zip -r -y "$IPA_OUT" Payload)
+          unzip -l "$IPA_OUT" | grep -q "Payload/PCPhoneRemote.app/Info.plist"
+          unzip -l "$IPA_OUT" | grep -q "Payload/PCPhoneRemote.app/PCPhoneRemote"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: release-dist/*.ipa
+          if-no-files-found: error
 
   github-release:
     needs: [publish, build-linux, build-windows, build-android, build-ios]
@@ -156,15 +188,19 @@ jobs:
         with:
           name: android-apk
           path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+          path: artifacts
       - name: Generate SHA256SUMS.txt
         working-directory: artifacts
-        run: sha256sum *.exe *.run *.apk *.zip > SHA256SUMS.txt
+        run: sha256sum *.exe *.run *.apk *.ipa *.zip > SHA256SUMS.txt
       - name: Retain an already published complete release
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "v$RELEASE_VERSION" --json isDraft,assets > existing-release.json 2>/dev/null && jq -e '.isDraft == false and (.assets | length == 7)' existing-release.json; then
+          if gh release view "v$RELEASE_VERSION" --json isDraft,assets > existing-release.json 2>/dev/null && jq -e '.isDraft == false and (.assets | length == 8)' existing-release.json; then
             echo 'published=true' >> "$GITHUB_OUTPUT"
             echo 'Published downloads are retained; reruns do not replace released binaries.'
           else

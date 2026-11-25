@@ -1,4 +1,4 @@
-param([string]$Version = '2.3.0')
+param([string]$Version = '2.3.1')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root 'release-dist'
@@ -11,7 +11,7 @@ $apkSrc = Join-Path $root 'pc-phone-remote-android\app\build\outputs\apk\release
 if (Test-Path $apkSrc) {
     Copy-Item $apkSrc -Destination (Join-Path $out "PCPhoneRemote-v$Version.apk") -Force
 }
-$names = @('PCPhoneRemote-Setup.exe','PCPhoneRemote-Linux-Installer.run',"PCPhoneRemote-Windows-v$Version.zip","PCPhoneRemote-Relay-v$Version.zip","PCPhoneRemote-iOS-Source-v$Version.zip","PCPhoneRemote-v$Version.apk")
+$names = @('PCPhoneRemote-Setup.exe','PCPhoneRemote-Linux-Installer.run',"PCPhoneRemote-Windows-v$Version.zip","PCPhoneRemote-Relay-v$Version.zip","PCPhoneRemote-iOS-Source-v$Version.zip","PCPhoneRemote-v$Version.apk","PCPhoneRemote-v$Version.ipa")
 $names | Where-Object { Test-Path (Join-Path $out $_) } | ForEach-Object {
     '{0}  {1}' -f (Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash.ToLowerInvariant(),$_
 } | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii

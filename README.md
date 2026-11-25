@@ -2,9 +2,9 @@
 
 **Your computer, within reach of your phone.**
 
-A personal remote for Windows and Linux: power, media, touchpad, shared files and PC status. Version **2.3.0** adds a desktop control center, QR pairing, LAN discovery, installers, an iPhone browser interface and native SwiftUI sources.
+A personal remote for Windows and Linux: power, media, touchpad, shared files and PC status. Version **2.3.1** adds a prebuilt unsigned iOS `.ipa` for Windows/macOS sideloading, an iPhone browser interface, desktop control center, QR pairing, LAN discovery, and native installers.
 
-[Download 2.3.0](https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.3.0) · [Relay package](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay) · [Security](SECURITY.md) · [MIT License](LICENSE)
+[Download 2.3.1](https://github.com/kznkutsubyo/remote-pc-control/releases/tag/v2.3.1) · [Relay package](https://github.com/kznkutsubyo/remote-pc-control/pkgs/container/remote-pc-control-relay) · [Security](SECURITY.md) · [MIT License](LICENSE)
 
 ## Preview
 
@@ -24,9 +24,9 @@ Real Android phone captures from an earlier 2.2 build. Personal fields have opaq
 | Windows x64 | Setup EXE or portable ZIP | Python backend, desktop control center, optional native sign-in |
 | Linux | Self-extracting .run installer | Desktop-dependent integrations; X11 and Wayland differ |
 | iPhone / iPad browser | Safari at /app | Add to Home Screen; no IPA needed |
-| Native iOS | SwiftUI source ZIP | Requires macOS, Xcode and your signing team |
+| Native iOS | Unsigned .ipa or SwiftUI source ZIP | Sideload via Sideloadly / AltStore / TrollStore or build in Xcode |
 
-Linux desktop behavior depends on available utilities and system policies. Native iOS is distributed as source, not a signed IPA. Windows lock-screen integration remains optional and requires separate testing in a recoverable environment.
+Linux desktop behavior depends on available utilities and system policies. The distributed `.ipa` is unsigned for sideloading via Windows/macOS tools. Windows lock-screen integration remains optional and requires separate testing in a recoverable environment.
 
 ## Features
 
@@ -49,12 +49,13 @@ Get files from [Releases](https://github.com/kznkutsubyo/remote-pc-control/relea
 
 | File | Purpose |
 | --- | --- |
-| PCPhoneRemote-v2.3.0.apk | Android app |
+| PCPhoneRemote-v2.3.1.apk | Android app |
+| PCPhoneRemote-v2.3.1.ipa | Native iOS app (unsigned arm64 IPA for sideloading via Sideloadly / AltStore / TrollStore) |
 | PCPhoneRemote-Setup.exe | Windows installer and launcher |
 | PCPhoneRemote-Linux-Installer.run | Linux installer |
-| PCPhoneRemote-Windows-v2.3.0.zip | Portable Windows sources and native x64 sign-in binaries |
-| PCPhoneRemote-Relay-v2.3.0.zip | Self-hosted relay sources |
-| PCPhoneRemote-iOS-Source-v2.3.0.zip | SwiftUI sources and instructions |
+| PCPhoneRemote-Windows-v2.3.1.zip | Portable Windows sources and native x64 sign-in binaries |
+| PCPhoneRemote-Relay-v2.3.1.zip | Self-hosted relay sources |
+| PCPhoneRemote-iOS-Source-v2.3.1.zip | SwiftUI sources and Xcode build instructions |
 | SHA256SUMS.txt | Download checksums |
 
 The APK uses a development signing key. Windows executables are unsigned. The Windows launcher wraps Python; Python is a prerequisite, not a bundled runtime.
@@ -100,11 +101,9 @@ The PC address must be reachable. On a phone, 127.0.0.1 refers to the phone itse
 
 ### iPhone / iPad
 
-Open http://<your-pc-address>:8765/app in Safari, sign in using the server PIN, then use **Share → Add to Home Screen**.
-
-Service-worker/full PWA behavior requires a secure browser context, normally HTTPS. LAN HTTP is a basic browser connection. The relay API does not serve /app; use a direct PC connection or an HTTPS proxy for the browser interface.
-
-For native SwiftUI sources, see the [iOS guide](pc-phone-remote-ios/README.md). A simulator build is not a signed physical-device app.
+1. **Instant Safari PWA (no extra tools):** Open `http://<your-pc-address>:8765/app` in Safari (or scan the **iPhone / Web PWA** QR code from the desktop control center), sign in using the server PIN, then tap **Share → Add to Home Screen**.
+   Service-worker/full PWA behavior requires a secure browser context (HTTPS). LAN HTTP provides the basic browser UI. The relay API does not serve `/app`.
+2. **Native iOS App via `.ipa` Sideloading (no Mac needed):** Download `PCPhoneRemote-v2.3.1.ipa` from [Releases](https://github.com/kznkutsubyo/remote-pc-control/releases/latest) and install it onto your iPhone/iPad from Windows or macOS using **Sideloadly**, **AltStore / SideStore**, or **TrollStore** (on eligible iOS builds). For full step-by-step instructions or Xcode source builds, see the [iOS guide](pc-phone-remote-ios/README.md).
 
 ## Files And Text
 
@@ -120,7 +119,7 @@ Native phone client → HTTPS relay → outgoing PC agent → computer
 
 Use a trusted HTTPS host, unique RELAY_PIN and random RELAY_AGENT_TOKEN of at least 24 characters. Update relay and agent together; one relay instance serves one PC.
 
-Container: **ghcr.io/kznkutsubyo/remote-pc-control-relay:2.3.0**.
+Container: **ghcr.io/kznkutsubyo/remote-pc-control-relay:2.3.1**.
 
 Configure credentials at deployment time. Regular files/text are buffered by the relay and are not end-to-end encrypted against it. Native Windows sign-in requests have their own encrypted protocol. See [relay setup](pc-phone-remote/README_REMOTE.md).
 
@@ -147,10 +146,10 @@ cd ..\pc-phone-remote-android
 .\gradlew.bat assembleRelease lintDebug
 cd ..
 powershell -NoProfile -ExecutionPolicy Bypass -File windows-unlock\build.ps1 -RunTests
-powershell -NoProfile -File tools\package_release.ps1 -Version 2.3.0
+powershell -NoProfile -File tools\package_release.ps1 -Version 2.3.1
 ~~~
 
-The tag workflow checks server tests, native Windows tests, Android release, Linux installer syntax, relay startup and an unsigned iOS simulator build. It then publishes Release downloads and the GHCR package. These checks do not replace physical-device and desktop-session testing.
+The tag workflow checks server tests, native Windows tests, Android release, Linux installer syntax, relay startup and the unsigned `arm64` iOS `.ipa` build. It then publishes Release downloads and the GHCR package. These checks do not replace physical-device and desktop-session testing.
 
 Publishing CI requires the repository secret ANDROID_DEBUG_KEYSTORE_BASE64: the Base64-encoded development keystore matching previous APKs. This preserves Android update compatibility. Never commit the keystore. Fork maintainers should configure their own signing identity; changing the key prevents an in-place update from another publisher's APK.
 

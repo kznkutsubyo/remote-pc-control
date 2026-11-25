@@ -3,13 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       source_run:
-        description: 'Run ID whose five build/package jobs passed for tag v2.3.0'
+        description: 'Run ID whose five build/package jobs passed for tag v2.3.1'
         required: true
 permissions:
   contents: write
   actions: read
 env:
-  RELEASE_VERSION: '2.3.0'
+  RELEASE_VERSION: '2.3.1'
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -43,15 +43,21 @@ jobs:
           run-id: ${{ inputs.source_run }}
           name: android-apk
           path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run }}
+          name: ios-ipa
+          path: artifacts
       - name: Generate checksums
         working-directory: artifacts
-        run: sha256sum *.exe *.run *.apk *.zip > SHA256SUMS.txt
+        run: sha256sum *.exe *.run *.apk *.ipa *.zip > SHA256SUMS.txt
       - name: Retain an already published complete release
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "v$RELEASE_VERSION" --json isDraft,assets > existing-release.json 2>/dev/null && jq -e '.isDraft == false and (.assets | length == 7)' existing-release.json; then
+          if gh release view "v$RELEASE_VERSION" --json isDraft,assets > existing-release.json 2>/dev/null && jq -e '.isDraft == false and (.assets | length == 8)' existing-release.json; then
             echo 'published=true' >> "$GITHUB_OUTPUT"
             echo 'Published downloads are retained; reruns do not replace released binaries.'
           else

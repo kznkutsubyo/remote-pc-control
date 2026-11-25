@@ -363,7 +363,8 @@ final class AppStore: ObservableObject {
                 name: params["name"]?.isEmpty == false ? params["name"]! : "PC",
                 host: host,
                 port: params["port"]?.isEmpty == false ? params["port"]! : "8765",
-                pin: pin
+                pin: pin,
+                mac: params["mac"] ?? ""
             ))
             currentTab = 0
             Task { await refreshStatus() }

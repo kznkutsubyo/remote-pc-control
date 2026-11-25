@@ -14,7 +14,7 @@ def archive(name, files):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="2.3.0")
+    parser.add_argument("--version", default="2.3.1")
     args = parser.parse_args()
     if not __import__('re').fullmatch(r"\d+\.\d+\.\d+", args.version):
         parser.error("Version must be major.minor.patch")

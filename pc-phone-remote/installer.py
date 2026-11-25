@@ -263,30 +263,70 @@ def create_windows_shortcuts(log_cb=None) -> None:
     if not is_windows():
         return
     ico = ASSETS_DIR / "app_icon.ico"
+    launcher_exe = ROOT / "PCPhoneRemote.exe"
     pyw = Path(sys.executable).with_name("pythonw.exe")
     if not pyw.exists():
-        pyw = Path(sys.executable)
+        real_pyw = Path.home() / "AppData" / "Local" / "Python" / "bin" / "pythonw.exe"
+        pyw = real_pyw if real_pyw.exists() else Path(sys.executable)
 
+    if launcher_exe.exists():
+        main_target = str(launcher_exe).replace('"', "")
+        main_args = ""
+        cfg_target = str(launcher_exe).replace('"', "")
+        cfg_args = ""
+        tray_args = "--tray"
+    else:
+        main_target = "wscript.exe"
+        main_args = f'"{str(ROOT / "start-hidden.vbs")}"'
+        cfg_target = str(pyw).replace('"', "")
+        cfg_args = f'"{str(ROOT / "configure.py")}"'
+        tray_args = ""
+
+    work_dir = str(ROOT).replace('"', "")
+    ico_str = str(ico).replace('"', "")
     ps_script = f"""
 $ws = New-Object -ComObject WScript.Shell
 $desktop = $ws.SpecialFolders("Desktop")
 $startMenu = Join-Path $env:APPDATA "Microsoft\\Windows\\Start Menu\\Programs\\PC Phone Remote"
 New-Item -ItemType Directory -Force -Path $startMenu | Out-Null
 
-function Make-Link($dir, $name, $target, $args, $desc) {{
+function Make-Link($dir, $name, $target, $linkArgs, $desc) {{
     $lnk = $ws.CreateShortcut((Join-Path $dir "$name.lnk"))
     $lnk.TargetPath = $target
-    $lnk.Arguments = $args
-    $lnk.WorkingDirectory = "{str(ROOT).replace('"', '')}"
-    $lnk.IconLocation = "{str(ico).replace('"', '')}"
+    $lnk.Arguments = $linkArgs
+    $lnk.WorkingDirectory = '{work_dir.replace("'", "''")}'
+    $lnk.IconLocation = '{ico_str.replace("'", "''")}'
     $lnk.Description = $desc
     $lnk.Save()
 }}
 
-Make-Link $desktop "PC Phone Remote" "wscript.exe" '"{str(ROOT / "start-hidden.vbs")}"' "Start PC Phone Remote background server"
-Make-Link $startMenu "PC Phone Remote" "wscript.exe" '"{str(ROOT / "start-hidden.vbs")}"' "Start PC Phone Remote background server"
-Make-Link $startMenu "Configure PC Phone Remote" "{str(pyw)}" '"{str(ROOT / "configure.py")}"' "Open PC Phone Remote configuration"
-Make-Link $desktop "Configure PC Phone Remote" "{str(pyw)}" '"{str(ROOT / "configure.py")}"' "Open PC Phone Remote configuration"
+$foundInSubfolder = $false
+Get-ChildItem -Path $desktop -Directory -ErrorAction SilentlyContinue | ForEach-Object {{
+    $sub = $_.FullName
+    if (Test-Path (Join-Path $sub "PC Phone Remote.lnk")) {{
+        Make-Link $sub "PC Phone Remote" '{main_target.replace("'", "''")}' '{main_args.replace("'", "''")}' "PC Phone Remote Control Center"
+        $foundInSubfolder = $true
+    }}
+    if (Test-Path (Join-Path $sub "Configure PC Phone Remote.lnk")) {{
+        Make-Link $sub "Configure PC Phone Remote" '{cfg_target.replace("'", "''")}' '{cfg_args.replace("'", "''")}' "Open PC Phone Remote configuration"
+        $foundInSubfolder = $true
+    }}
+}}
+
+if (-not $foundInSubfolder -or (Test-Path (Join-Path $desktop "PC Phone Remote.lnk"))) {{
+    Make-Link $desktop "PC Phone Remote" '{main_target.replace("'", "''")}' '{main_args.replace("'", "''")}' "PC Phone Remote Control Center"
+}}
+if (Test-Path (Join-Path $desktop "Configure PC Phone Remote.lnk")) {{
+    Make-Link $desktop "Configure PC Phone Remote" '{cfg_target.replace("'", "''")}' '{cfg_args.replace("'", "''")}' "Open PC Phone Remote configuration"
+}}
+
+Make-Link $startMenu "PC Phone Remote" '{main_target.replace("'", "''")}' '{main_args.replace("'", "''")}' "PC Phone Remote Control Center"
+if (Test-Path (Join-Path $startMenu "Configure PC Phone Remote.lnk")) {{
+    Make-Link $startMenu "Configure PC Phone Remote" '{cfg_target.replace("'", "''")}' '{cfg_args.replace("'", "''")}' "Open PC Phone Remote configuration"
+}}
+if ('{tray_args}' -ne '') {{
+    Make-Link $startMenu "PC Phone Remote (Tray)" '{main_target.replace("'", "''")}' '{tray_args}' "PC Phone Remote System Tray"
+}}
 """
     subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
